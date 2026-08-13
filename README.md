@@ -81,7 +81,7 @@ rules:
 
 Use GuardSpec **before** an agent begins work when a repository has policy spread across `AGENTS.md`, `CLAUDE.md`, Copilot instructions, Cursor rules, `CODEOWNERS`, and similar files. It makes explicit path, command, network, MCP, disclosure, and check requirements queryable without executing any repository code.
 
-For a complementary **post-change** evidence gate, evaluate the real patch and the checks it ran with [PatchWitness](https://github.com/pangxueyuan2-creator/patchwitness). GuardSpec does not verify that a change stayed in scope after it was made; PatchWitness does not compile an estate of repository instructions into a preflight policy. Use either tool independently when its narrower boundary fits the workflow.
+For a complementary **post-change** evidence gate, evaluate the real patch and the checks it ran with [PatchWitness](https://github.com/pangxueyuan2-creator/patchwitness). GuardSpec does not verify that a change stayed in scope after it was made; PatchWitness does not compile an estate of repository instructions into a preflight policy. Use either tool independently when its narrower boundary fits the workflow. See the [optional handoff guide](docs/integrations/patchwitness.md) for a boundary-preserving sequence.
 
 ## Real demo
 

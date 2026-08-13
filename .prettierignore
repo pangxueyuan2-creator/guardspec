@@ -1,0 +1,5 @@
+node_modules/
+dist/
+action/dist/
+coverage/
+research/

@@ -1,0 +1,14 @@
+node_modules/
+/dist/
+coverage/
+.nyc_output/
+*.log
+.env
+.env.*
+!.env.example
+.guardspec/
+.guardspec.sarif
+.DS_Store
+*.tgz
+npm-debug.log*
+pnpm-debug.log*

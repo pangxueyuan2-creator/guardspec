@@ -1,0 +1,7 @@
+---
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+Do not modify `src/generated/**`.
+Run `npm test` before committing.

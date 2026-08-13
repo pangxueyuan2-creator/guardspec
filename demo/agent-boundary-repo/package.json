@@ -1,0 +1,8 @@
+{
+  "name": "guardspec-agent-boundary-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

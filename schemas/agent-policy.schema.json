@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guardspec.dev/schemas/agent-policy-v1.json",
+  "title": "GuardSpec agent policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "rules"],
+  "properties": {
+    "version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "rules": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": { "$ref": "#/$defs/rule" }
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ruleIds", "resolution", "rationale"],
+        "properties": {
+          "ruleIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          },
+          "resolution": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "effect",
+        "scope",
+        "severity",
+        "message",
+        "provenance"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "kind": {
+          "enum": [
+            "path",
+            "command",
+            "network",
+            "mcp",
+            "check",
+            "approval",
+            "disclosure"
+          ]
+        },
+        "effect": { "enum": ["allow", "deny", "require", "warn"] },
+        "scope": { "type": "string", "minLength": 1 },
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "boolean" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+        "message": { "type": "string" },
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "line", "adapter", "excerpt", "confidence"],
+            "properties": {
+              "source": { "type": "string" },
+              "line": { "type": "integer", "minimum": 1 },
+              "adapter": { "type": "string" },
+              "excerpt": { "type": "string" },
+              "confidence": { "enum": ["high", "medium", "manual"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

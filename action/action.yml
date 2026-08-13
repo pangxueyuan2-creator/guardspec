@@ -1,0 +1,31 @@
+name: GuardSpec
+summary: Compile and enforce repository intent for coding agents.
+description: Validate GuardSpec policy, detect instruction conflicts, protect declared paths, and emit JSON/SARIF findings.
+author: GuardSpec contributors
+branding:
+  icon: shield
+  color: purple
+inputs:
+  policy:
+    description: Repository-relative policy file.
+    required: false
+    default: .agent-policy.yml
+  changed-files:
+    description: Newline-separated changed files. Defaults to git diff against the event base when available.
+    required: false
+  ai-assisted:
+    description: Whether this contribution used AI assistance.
+    required: false
+    default: "false"
+  fail-on-warn:
+    description: Treat warnings as failures.
+    required: false
+    default: "false"
+outputs:
+  result:
+    description: JSON check result.
+  sarif:
+    description: Repository-relative SARIF result path.
+runs:
+  using: node20
+  main: dist/index.js

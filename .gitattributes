@@ -1,0 +1,2 @@
+# ncc's generated bundle contains upstream dependency whitespace; preserve it byte-for-byte.
+action/dist/index.js -whitespace

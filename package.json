@@ -1,0 +1,65 @@
+{
+  "name": "guardspec",
+  "version": "0.1.0",
+  "description": "Compile repository intent into enforceable agent boundaries.",
+  "keywords": [
+    "ai-agents",
+    "agent-governance",
+    "coding-agents",
+    "policy-as-code",
+    "mcp",
+    "devsecops"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "guardspec": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "action",
+    "schemas"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist coverage",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "action:build": "ncc build action/index.ts -o action/dist",
+    "pack:check": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "picomatch": "^4.0.3",
+    "yaml": "^2.8.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^22.15.0",
+    "@types/picomatch": "^3.0.2",
+    "@vercel/ncc": "^0.38.4",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.36.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.42.0",
+    "vitest": "^3.2.4"
+  }
+}

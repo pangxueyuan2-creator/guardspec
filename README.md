@@ -7,6 +7,10 @@
 <p align="center"><strong>Compile repository intent into enforceable agent boundaries.</strong></p>
 
 <p align="center">
+  <img src="assets/guardspec-social-preview.png" alt="GuardSpec compiles repository intent into enforceable agent boundaries" width="100%">
+</p>
+
+<p align="center">
   <a href="https://github.com/pangxueyuan2-creator/guardspec/actions"><img src="https://img.shields.io/github/actions/workflow/status/pangxueyuan2-creator/guardspec/ci.yml?branch=main&label=CI" alt="CI"></a>
   <a href="https://github.com/pangxueyuan2-creator/guardspec/releases"><img src="https://img.shields.io/github/v/release/pangxueyuan2-creator/guardspec?display_name=tag" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
@@ -73,9 +77,15 @@ rules:
         confidence: high
 ```
 
+## Where GuardSpec fits
+
+Use GuardSpec **before** an agent begins work when a repository has policy spread across `AGENTS.md`, `CLAUDE.md`, Copilot instructions, Cursor rules, `CODEOWNERS`, and similar files. It makes explicit path, command, network, MCP, disclosure, and check requirements queryable without executing any repository code.
+
+For a complementary **post-change** evidence gate, evaluate the real patch and the checks it ran with [PatchWitness](https://github.com/pangxueyuan2-creator/patchwitness). GuardSpec does not verify that a change stayed in scope after it was made; PatchWitness does not compile an estate of repository instructions into a preflight policy. Use either tool independently when its narrower boundary fits the workflow.
+
 ## Real demo
 
-The committed demo copies a small Git repository to a temporary worktree, compiles its actual `AGENTS.md`, permits the intended authentication fix, blocks CI and policy self-modification, runs a real Node test, and prints the actual `git diff`. It does not replay fabricated terminal output.
+The committed demo copies a small Git repository to a temporary worktree, compiles its actual `AGENTS.md`, permits the intended authentication fix, blocks CI and policy self-modification, runs a real Node test, and prints the actual `git diff`. It does not replay fabricated terminal output. In the release-validation run, it completed with two allowed preflight decisions, two denied protected-path decisions, and two passing Node tests.
 
 ```bash
 pnpm build

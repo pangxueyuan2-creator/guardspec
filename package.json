@@ -45,7 +45,7 @@
     "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
-    "@actions/core": "^1.11.1",
+    "@actions/core": "^3.0.1",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "picomatch": "^4.0.3",
     "yaml": "^2.8.1",

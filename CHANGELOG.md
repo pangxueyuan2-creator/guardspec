@@ -16,6 +16,9 @@ All notable changes to GuardSpec are documented here.
 - Sibling path rules on one instruction line now get unique, scope-qualified ids so generated YAML survives `parsePolicy` duplicate-id rejection.
 - Boundary provenance entries are de-duplicated by source/rule/reason.
 - GitHub Action changed-file discovery now uses `git diff -z` and `--no-renames`, so spaced/Unicode paths stay one entry and a `git mv` of a protected file still lists the source.
+- Unquoted path captures strip trailing sentence punctuation (`src/.` → `src/`, `calculator.py.` → `calculator.py`) while quoted paths keep interior punctuation.
+- Prose exclusive-allow no longer treats the English word `files` as a scope: `You may only edit files under src/.` compiles to `src/**`, not `files/**`.
+- `Required check:` / `必须运行:` labeled commands are extracted when they pass the required-check allowlist.
 
 ### Added
 

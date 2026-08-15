@@ -42421,16 +42421,21 @@ async function fs_safe_walkRepository(root) {
 
 ;// CONCATENATED MODULE: ./src/core/extract.ts
 const PATH_CAPTURE = '(?:[`“"\'「]([^`”"\'」]+)[`”"\'」]|([^`”"\'\\s,，。；]+))';
+// Skip English/Chinese filler between the verb and the actual path:
+// "edit files under src/" → src/, "修改 文件 位于 src/" → src/.
+const PATH_FILLER = String.raw `(?:(?:the|files?|paths?|dirs?|directories|code|sources?|contents?|文件|目录|路径|代码|under|in|inside|within|beneath|from|located|位于|在)\s+)*`;
 const PATH_PATTERNS = [
     {
         // English + Chinese deny forms. Quoted paths keep interior spaces.
         expression: new RegExp(String.raw `(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*` +
+            PATH_FILLER +
             PATH_CAPTURE, "i"),
         effect: "deny",
         message: "Instruction forbids changes to this path.",
     },
     {
         expression: new RegExp(String.raw `(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*` +
+            PATH_FILLER +
             PATH_CAPTURE, "i"),
         effect: "allow",
         exclusive: true,
@@ -42438,15 +42443,44 @@ const PATH_PATTERNS = [
     },
     {
         expression: new RegExp(String.raw `(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*` +
+            PATH_FILLER +
             PATH_CAPTURE, "i"),
         effect: "deny",
         message: "Instruction marks this path as protected.",
     },
 ];
+const SENTENCE_SUFFIX = /[.!?,;:。！？、；：…]+$/u;
+const FILLER_WORDS = new Set([
+    "file",
+    "files",
+    "path",
+    "paths",
+    "dir",
+    "dirs",
+    "directory",
+    "directories",
+    "code",
+    "source",
+    "sources",
+    "content",
+    "contents",
+    "the",
+    "under",
+    "in",
+    "inside",
+    "within",
+    "from",
+    "located",
+    "文件",
+    "目录",
+    "路径",
+    "代码",
+]);
 const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
     /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
     /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
 ]));
+const LABELED_CHECK = /^\s*(?:[-*]\s+)?(?:required\s+checks?|must(?:\s+always)?\s+run|check(?:s)?\s+required|必须运行|必须检查|要求检查|检查命令)\s*[:=]\s*`?(.+?)`?\s*$/i;
 const SHELL_INTERPRETERS = new Set([
     "cmd",
     "cmd.exe",
@@ -42584,10 +42618,17 @@ function looksLikeFile(path) {
         return false;
     if (EXTENSIONLESS_FILES.has(lowered))
         return true;
-    // .env, .gitignore, .tasktopr.toml — hidden files stay exact.
-    if (/^\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(base))
+    // Quoted `calculator.py.` keeps the trailing dot; classify on the stem.
+    const stem = base.replace(/\.+$/, "") || base;
+    const loweredStem = stem.toLowerCase();
+    if (HIDDEN_DIRECTORIES.has(loweredStem))
+        return false;
+    if (EXTENSIONLESS_FILES.has(loweredStem))
         return true;
-    return /\.[A-Za-z0-9]{1,16}$/.test(base);
+    // .env, .gitignore, .tasktopr.toml — hidden files stay exact.
+    if (/^\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(stem))
+        return true;
+    return /\.[A-Za-z0-9]{1,16}$/.test(stem);
 }
 function scopeFor(path) {
     const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
@@ -42598,6 +42639,56 @@ function scopeFor(path) {
     if (looksLikeFile(normalized))
         return normalized;
     return `${normalized.replace(/\/+$/, "")}/**`;
+}
+function sanitizeUnquotedPath(token) {
+    const stripped = token.replace(SENTENCE_SUFFIX, "");
+    return stripped || token;
+}
+function sanitizeCheck(command) {
+    return command.trim().replace(SENTENCE_SUFFIX, "").trim();
+}
+function isFillerToken(token) {
+    return FILLER_WORDS.has(token.toLowerCase());
+}
+function looksLikePathToken(token) {
+    if (!token || isFillerToken(token))
+        return false;
+    if (token.includes("/") || token.includes("\\"))
+        return true;
+    if (token.startsWith("."))
+        return true;
+    if (looksLikeFile(token))
+        return true;
+    return false;
+}
+function unwrapQuotedToken(raw) {
+    const quoted = raw.match(/^[`“"'「]([^`”"'」]+)[`”"'」]$/);
+    return quoted?.[1] ?? raw;
+}
+function capturedPath(match) {
+    const quoted = match[1];
+    if (quoted)
+        return { path: quoted, quoted: true };
+    const unquoted = match[2];
+    if (!unquoted)
+        return undefined;
+    return { path: sanitizeUnquotedPath(unquoted), quoted: false };
+}
+function resolvePathCapture(captured, quoted, text) {
+    if (quoted)
+        return captured;
+    const cleaned = sanitizeUnquotedPath(captured);
+    if (cleaned && !isFillerToken(cleaned))
+        return cleaned;
+    const firstAt = text.indexOf(captured);
+    const rest = firstAt >= 0 ? text.slice(firstAt + captured.length) : text;
+    const tokens = rest.match(/[`“"'「]([^`”"'」]+)[`”"'」]|[^\s,，。；]+/g) ?? [];
+    for (const raw of tokens) {
+        const token = sanitizeUnquotedPath(unwrapQuotedToken(raw));
+        if (token && looksLikePathToken(token))
+            return token;
+    }
+    return undefined;
 }
 function quotedPaths(text) {
     return [...text.matchAll(/[`“"'「]([^`”"'」]+)[`”"'」]/g)]
@@ -42613,8 +42704,8 @@ function siblingPaths(text, first) {
     const rest = firstAt >= 0 ? text.slice(firstAt + first.length) : "";
     const extra = new RegExp(String.raw `(?:\s*(?:,|and|or|和|以及|与|或)\s*)` + PATH_CAPTURE, "gi");
     for (const match of rest.matchAll(extra)) {
-        const captured = match[1] || match[2];
-        if (captured)
+        const captured = match[1] || (match[2] ? sanitizeUnquotedPath(match[2]) : undefined);
+        if (captured && !isFillerToken(captured))
             found.push(captured);
     }
     return found;
@@ -42664,28 +42755,42 @@ function extract_adapterForPath(path) {
         return "repository-doc";
     return undefined;
 }
+function pushRequiredCheck(rules, adapter, source, line, command, message) {
+    const sanitized = sanitizeCheck(command);
+    if (!sanitized || !isSafeRequiredCheck(sanitized))
+        return;
+    rules.push(rule(adapter, "check", "require", source, line, "**", message, sanitized));
+}
 function extract_extractTextRules(source, adapter, content) {
     const rules = [];
     for (const [index, text] of content.split(/\r?\n/).entries()) {
         const line = index + 1;
         for (const candidate of PATH_PATTERNS) {
             const match = text.match(candidate.expression);
-            const captured = match?.[1] || match?.[2];
-            if (!captured)
+            if (!match)
                 continue;
-            for (const path of siblingPaths(text, captured)) {
+            const raw = capturedPath(match);
+            if (!raw)
+                continue;
+            const resolved = resolvePathCapture(raw.path, raw.quoted, text);
+            if (!resolved)
+                continue;
+            for (const path of siblingPaths(text, resolved)) {
                 rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(path), candidate.message, undefined, "high", candidate.exclusive));
             }
         }
         const commandMatch = text.match(COMMAND_PATTERNS[1]);
-        if (commandMatch?.[1] &&
-            COMMAND_PATTERNS[0].test(text) &&
-            isSafeRequiredCheck(commandMatch[1])) {
-            rules.push(rule(adapter, "check", "require", source, line, "**", "Instruction requires this check.", commandMatch[1]));
+        if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
+            pushRequiredCheck(rules, adapter, source, line, commandMatch[1], "Instruction requires this check.");
         }
         const bareRun = text.match(/^\s*(?:[-*]\s+)?(?:run|execute|运行|执行):\s*`?([^`]+)`?\s*$/i);
-        if (bareRun?.[1] && isSafeRequiredCheck(bareRun[1]))
-            rules.push(rule(adapter, "check", "require", source, line, "**", "Explicit listed check.", bareRun[1]));
+        if (bareRun?.[1]) {
+            pushRequiredCheck(rules, adapter, source, line, bareRun[1], "Explicit listed check.");
+        }
+        const labeled = text.match(LABELED_CHECK);
+        if (labeled?.[1]) {
+            pushRequiredCheck(rules, adapter, source, line, labeled[1], "Labeled required check.");
+        }
         if (/(?:must|required to|必须|需要)\s*(?:disclose|mention|披露|说明).*(?:ai|agent|assistance|AI|人工智能|助手)/i.test(text)) {
             rules.push(rule(adapter, "disclosure", "require", source, line, "**", "Instruction requires AI assistance disclosure.", true));
         }

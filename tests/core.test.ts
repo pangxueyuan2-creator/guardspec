@@ -290,6 +290,57 @@ describe("extraction and path safety", () => {
       expect.arrayContaining(["calculator.py", "test_calculator.py"]),
     );
   });
+  it("does not treat the English word files as an exclusive allow scope", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "You may only edit files under src/.\nNever modify .github/workflows/.\nRequired check: python -m unittest",
+    );
+    const allowed = rules
+      .filter((entry) => entry.effect === "allow")
+      .map((entry) => entry.scope);
+    const denied = rules
+      .filter((entry) => entry.effect === "deny")
+      .map((entry) => entry.scope);
+    expect(allowed).toEqual(["src/**"]);
+    expect(allowed.some((scope) => scope.startsWith("files"))).toBe(false);
+    expect(denied).toContain(".github/workflows/**");
+    expect(denied.some((scope) => scope.includes("/./**"))).toBe(false);
+    expect(
+      rules.some(
+        (entry) =>
+          entry.kind === "check" && entry.value === "python -m unittest",
+      ),
+    ).toBe(true);
+    const policy: Policy = { version: 1, name: "prose", rules };
+    expect(evaluate(policy, "path", "src/calc.py").status).toBe("allowed");
+    expect(evaluate(policy, "path", "files/foo.txt").status).toBe("denied");
+    expect(evaluate(policy, "path", ".github/workflows/ci.yml").status).toBe(
+      "denied",
+    );
+    const boundary = compileBoundary(
+      policyTemplate("prose-boundary", rules),
+    );
+    expect(boundary.exclusive_allow).toBe(true);
+    expect(boundary.allowed_paths).toEqual(["src/**"]);
+    expect(boundary.denied_paths).toContain(".github/workflows/**");
+    expect(boundary.required_checks).toContain("python -m unittest");
+  });
+  it("extracts Chinese files-under-directory exclusive allow", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "只能修改 src/ 下的文件。",
+    );
+    expect(
+      rules
+        .filter((entry) => entry.exclusive)
+        .map((entry) => entry.scope),
+    ).toEqual(["src/**"]);
+    const policy: Policy = { version: 1, name: "zh-prose", rules };
+    expect(evaluate(policy, "path", "src/ok.ts").status).toBe("allowed");
+    expect(evaluate(policy, "path", "files/foo.txt").status).toBe("denied");
+  });
 });
 
 describe("exclusive allow and compiled boundary", () => {

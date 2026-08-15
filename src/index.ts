@@ -6,6 +6,11 @@ export {
 } from "./core/scanner.js";
 export { evaluate, evaluateTask } from "./core/evaluator.js";
 export {
+  AGENT_BOUNDARY_SCHEMA,
+  compileBoundary,
+} from "./core/boundary.js";
+export type { AgentBoundary, AgentBoundaryProvenance } from "./core/boundary.js";
+export {
   loadPolicy,
   parsePolicy,
   stringifyPolicy,

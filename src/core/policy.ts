@@ -44,6 +44,7 @@ const ruleSchema = z.object({
   severity: z.enum(["info", "low", "medium", "high", "critical"]),
   message: z.string().min(1),
   provenance: z.array(provenanceSchema).min(1),
+  exclusive: z.boolean().optional(),
 });
 
 const policySchema = z

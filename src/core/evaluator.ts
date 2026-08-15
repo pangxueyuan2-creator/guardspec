@@ -55,7 +55,25 @@ export function evaluate(
         EFFECT_PRIORITY[right.effect] - EFFECT_PRIORITY[left.effect] ||
         left.id.localeCompare(right.id),
     );
-  if (candidates.length === 0)
+  const exclusiveAllows = policy.rules.filter(
+    (rule) =>
+      action === "path" &&
+      rule.kind === "path" &&
+      rule.effect === "allow" &&
+      rule.exclusive === true,
+  );
+  if (candidates.length === 0) {
+    if (exclusiveAllows.length > 0)
+      return {
+        allowed: false,
+        status: "denied",
+        action,
+        target,
+        matchedRules: exclusiveAllows,
+        reason: "Exclusive allow scope does not include this path.",
+        requiredChecks: [],
+        approvalRequired: false,
+      };
     return {
       allowed: true,
       status: "not-covered",
@@ -67,6 +85,7 @@ export function evaluate(
       requiredChecks: [],
       approvalRequired: false,
     };
+  }
   const bestSpecificity = specificity(candidates[0]!.scope);
   const applicable = candidates.filter(
     (rule) => specificity(rule.scope) === bestSpecificity,
@@ -101,6 +120,20 @@ export function evaluate(
       target,
       matchedRules: applicable,
       reason: applicable.find((rule) => rule.effect === "deny")!.message,
+      requiredChecks,
+      approvalRequired,
+    };
+  if (
+    exclusiveAllows.length > 0 &&
+    !exclusiveAllows.some((rule) => matches(rule, target))
+  )
+    return {
+      allowed: false,
+      status: "denied",
+      action,
+      target,
+      matchedRules: [...applicable, ...exclusiveAllows],
+      reason: "Exclusive allow scope does not include this path.",
       requiredChecks,
       approvalRequired,
     };

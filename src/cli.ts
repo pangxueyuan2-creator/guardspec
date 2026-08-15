@@ -1,13 +1,33 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
+import { compileBoundary } from "./core/boundary.js";
 import { loadPolicy, policyTemplate, writePolicy } from "./core/policy.js";
 import { manualProvenance } from "./core/policy.js";
 import type { Policy, PolicyRule, TaskRequest } from "./core/types.js";
 import { runMcpServer } from "./mcp/server.js";
 import { writeAdapter } from "./adapters/generate.js";
+
+export function isDirectInvocation(
+  metaUrl: string,
+  argv1: string | undefined,
+): boolean {
+  if (!argv1) return false;
+  try {
+    const invoked = resolve(argv1);
+    const current = resolve(fileURLToPath(metaUrl));
+    if (process.platform === "win32") {
+      return invoked.toLowerCase() === current.toLowerCase();
+    }
+    return invoked === current;
+  } catch {
+    return false;
+  }
+}
 
 const EXIT = {
   success: 0,
@@ -18,7 +38,20 @@ const EXIT = {
 } as const;
 
 function usage(): string {
-  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
+  return `GuardSpec — compile repository intent into enforceable agent boundaries.
+
+Usage:
+  guardspec scan [--root <path>] [--json] [--write]
+  guardspec init [--root <path>] [--force]
+  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--json]
+  guardspec compile [--root <path>] [--policy <file>] [--out <file>] [--json]
+  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]
+  guardspec policy validate [--root <path>] [--policy <file>]
+  guardspec adapters generate <agent> [--root <path>] [--policy <file>]
+  guardspec doctor [--root <path>] [--json]
+  guardspec mcp [--root <path>] [--policy <file>]
+
+Exit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
 }
 
 interface Args {
@@ -185,6 +218,28 @@ async function handle(args: Args): Promise<number> {
       );
     return report.exitCode;
   }
+  if (args.command === "compile") {
+    const selected = flag(args, "policy") ?? ".agent-policy.yml";
+    const policyPath = resolve(root, selected);
+    let policy: Policy;
+    if (existsSync(policyPath)) {
+      policy = await currentPolicy(root, flag(args, "policy"));
+    } else {
+      const report = await scanRepository(root);
+      policy = policyTemplate(report.policy.name, [
+        ...baselineRules(),
+        ...report.policy.rules,
+      ]);
+    }
+    const boundary = compileBoundary(policy);
+    const out = flag(args, "out");
+    if (out) {
+      await writeFile(resolve(root, out), `${JSON.stringify(boundary, null, 2)}\n`, "utf8");
+    }
+    if (json || !out) writeOutput(boundary, true);
+    else writeOutput(`Wrote agent-boundary/v1 to ${out}`, false);
+    return EXIT.success;
+  }
   if (args.command === "explain") {
     const subject = args.positional[0];
     if (!subject)
@@ -248,4 +303,4 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) void main();
+if (isDirectInvocation(import.meta.url, process.argv[1])) void main();

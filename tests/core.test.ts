@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  AGENT_BOUNDARY_SCHEMA,
+  compileBoundary,
+} from "../src/core/boundary.js";
 import { evaluate, evaluateTask } from "../src/core/evaluator.js";
 import { extractTextRules } from "../src/core/extract.js";
 import {
@@ -183,5 +187,190 @@ describe("extraction and path safety", () => {
     expect(normalizeRepositoryPath("src/安全/file.ts")).toBe(
       "src/安全/file.ts",
     );
+  });
+  it("marks only/只能 instructions as exclusive allow", () => {
+    const english = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `src/`.",
+    );
+    const chinese = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "只能修改 `src/auth/**`。",
+    );
+    expect(english.some((entry) => entry.exclusive === true)).toBe(true);
+    expect(chinese.some((entry) => entry.exclusive === true)).toBe(true);
+  });
+  it("keeps interior spaces in quoted paths", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      'Do not modify `docs/my guide.md`.\nProtect path "config/app settings.yml".',
+    );
+    const scopes = rules.map((entry) => entry.scope);
+    expect(scopes.some((scope) => scope.includes("docs/my guide.md"))).toBe(
+      true,
+    );
+    expect(
+      scopes.some((scope) => scope.includes("config/app settings.yml")),
+    ).toBe(true);
+  });
+  it("treats extensionless directory paths as trees, not exact files", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Do not modify .github/workflows\nNever modify `.github`\nOnly modify src",
+    );
+    const denied = rules
+      .filter((entry) => entry.effect === "deny")
+      .map((entry) => entry.scope);
+    const allowed = rules
+      .filter((entry) => entry.effect === "allow")
+      .map((entry) => entry.scope);
+    expect(denied).toContain(".github/workflows/**");
+    expect(denied).toContain(".github/**");
+    expect(allowed).toContain("src/**");
+    const policy: Policy = { version: 1, name: "dirs", rules };
+    expect(evaluate(policy, "path", ".github/workflows/ci.yml").status).toBe(
+      "denied",
+    );
+    expect(evaluate(policy, "path", ".github/CODEOWNERS").status).toBe(
+      "denied",
+    );
+  });
+  it("keeps real files exact, including Dockerfile and .env", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Do not modify Dockerfile\nDo not modify `.env`\nDo not modify calculator.py",
+    );
+    const scopes = rules.map((entry) => entry.scope);
+    expect(scopes).toContain("Dockerfile");
+    expect(scopes).toContain(".env");
+    expect(scopes).toContain("calculator.py");
+    expect(scopes.some((scope) => scope === "Dockerfile/**")).toBe(false);
+  });
+  it("extracts multiple exclusive allow paths from one instruction", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `calculator.py` and `test_calculator.py`.",
+    );
+    const scopes = rules
+      .filter((entry) => entry.exclusive)
+      .map((entry) => entry.scope);
+    expect(scopes).toEqual(
+      expect.arrayContaining(["calculator.py", "test_calculator.py"]),
+    );
+    const unquoted = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "只能修改 calculator.py 和 test_calculator.py",
+    );
+    expect(
+      unquoted
+        .filter((entry) => entry.exclusive)
+        .map((entry) => entry.scope),
+    ).toEqual(
+      expect.arrayContaining(["calculator.py", "test_calculator.py"]),
+    );
+    const policy: Policy = { version: 1, name: "multi", rules };
+    expect(evaluate(policy, "path", "calculator.py").status).toBe("allowed");
+    expect(evaluate(policy, "path", "test_calculator.py").status).toBe(
+      "allowed",
+    );
+    expect(evaluate(policy, "path", ".github/workflows/ci.yml").status).toBe(
+      "denied",
+    );
+  });
+});
+
+describe("exclusive allow and compiled boundary", () => {
+  it("denies paths outside exclusive only-modify scope", () => {
+    const extracted = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `src/`.\nDo not modify `.github/workflows/**`.",
+    );
+    const policy: Policy = { version: 1, name: "exclusive", rules: extracted };
+    expect(evaluate(policy, "path", "src/ok.ts").status).toBe("allowed");
+    expect(evaluate(policy, "path", "README.md").status).toBe("denied");
+    expect(evaluate(policy, "path", "docs/guide.md").status).toBe("denied");
+    expect(evaluate(policy, "path", ".github/workflows/ci.yml").status).toBe(
+      "denied",
+    );
+    const report = evaluateTask(policy, {
+      paths: ["src/ok.ts", "README.md"],
+    });
+    expect(report.valid).toBe(false);
+    expect(report.exitCode).toBe(2);
+  });
+  it("does not apply exclusive path scope to commands", () => {
+    const extracted = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `src/`.\nBefore opening a pull request, run `npm test`.",
+    );
+    const policy: Policy = { version: 1, name: "exclusive", rules: extracted };
+    expect(evaluate(policy, "command", "npm test").status).not.toBe("denied");
+  });
+  it("compiles exclusive allow into agent-boundary/v1", () => {
+    const extracted = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `src/`.\nDo not modify `.github/workflows/**`.\nBefore opening a pull request, run `npm test`.",
+    );
+    const extraAllow: PolicyRule = {
+      ...rule("docs-allow", "allow", "docs/**"),
+    };
+    const policy = policyTemplate("exclusive-demo", [...extracted, extraAllow]);
+    const boundary = compileBoundary(policy);
+    expect(boundary.schema).toBe(AGENT_BOUNDARY_SCHEMA);
+    expect(boundary.version).toBe(1);
+    expect(boundary.exclusive_allow).toBe(true);
+    expect(boundary.allowed_paths.every((path) => path.includes("src"))).toBe(
+      true,
+    );
+    expect(boundary.allowed_paths.some((path) => path.includes("docs"))).toBe(
+      false,
+    );
+    expect(
+      boundary.denied_paths.some((path) => path.includes(".github/workflows")),
+    ).toBe(true);
+    expect(boundary.protected_paths).toEqual(boundary.denied_paths);
+    expect(boundary.required_checks).toContain("npm test");
+    expect(boundary.provenance.length).toBeGreaterThan(0);
+  });
+  it("deduplicates overlapping deny and check scopes", () => {
+    const policy = policyTemplate("dedupe", [
+      rule("deny-ci", "deny", ".github/workflows/**"),
+      { ...rule("deny-ci-again", "deny", ".github/workflows/**") },
+      {
+        ...rule("check-one", "require", "**"),
+        kind: "check",
+        value: "npm test",
+      },
+      {
+        ...rule("check-two", "require", "**"),
+        kind: "check",
+        value: "npm test",
+      },
+    ]);
+    const boundary = compileBoundary(policy);
+    expect(boundary.denied_paths).toEqual([".github/workflows/**"]);
+    expect(boundary.protected_paths).toEqual([".github/workflows/**"]);
+    expect(boundary.required_checks).toEqual(["npm test"]);
+  });
+  it("round-trips exclusive through YAML policy parse", () => {
+    const original = policyTemplate("roundtrip", [
+      {
+        ...rule("only-src", "allow", "src/**"),
+        exclusive: true,
+      },
+    ]);
+    const parsed = parsePolicy(stringifyPolicy(original));
+    expect(parsed.rules[0]?.exclusive).toBe(true);
+    expect(compileBoundary(parsed).exclusive_allow).toBe(true);
   });
 });

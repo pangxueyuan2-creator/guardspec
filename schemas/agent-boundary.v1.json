@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://patchwitness.dev/agent-boundary/v1",
+  "title": "Agent Boundary v1",
+  "description": "Versioned, tool-independent change boundary compiled from repository instructions.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "version",
+    "id",
+    "exclusive_allow",
+    "allowed_paths",
+    "denied_paths",
+    "protected_paths"
+  ],
+  "properties": {
+    "schema": { "const": "https://patchwitness.dev/agent-boundary/v1" },
+    "version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "exclusive_allow": { "type": "boolean" },
+    "allowed_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "denied_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "protected_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "required_checks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["source", "rule", "reason"],
+        "properties": {
+          "source": { "type": "string" },
+          "rule": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

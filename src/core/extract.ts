@@ -6,27 +6,41 @@ import type {
   SourceAdapter,
 } from "./types.js";
 
+const PATH_CAPTURE =
+  '(?:[`“"\'「]([^`”"\'」]+)[`”"\'」]|([^`”"\'\\s,，。；]+))';
+
 const PATH_PATTERNS: Array<{
   expression: RegExp;
   effect: RuleEffect;
   message: string;
+  exclusive?: boolean;
 }> = [
   {
-    // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
-    expression:
-      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+    // English + Chinese deny forms. Quoted paths keep interior spaces.
+    expression: new RegExp(
+      String.raw`(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*` +
+        PATH_CAPTURE,
+      "i",
+    ),
     effect: "deny",
     message: "Instruction forbids changes to this path.",
   },
   {
-    expression:
-      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+    expression: new RegExp(
+      String.raw`(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*` +
+        PATH_CAPTURE,
+      "i",
+    ),
     effect: "allow",
+    exclusive: true,
     message: "Instruction limits changes to this path scope.",
   },
   {
-    expression:
-      /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*[`“"'「]?([^`”"'\s,，。；」]+)/i,
+    expression: new RegExp(
+      String.raw`(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*` +
+        PATH_CAPTURE,
+      "i",
+    ),
     effect: "deny",
     message: "Instruction marks this path as protected.",
   },
@@ -49,12 +63,81 @@ function toId(
     .toLowerCase()}-${line}`;
 }
 
+const HIDDEN_DIRECTORIES = new Set([
+  ".git",
+  ".github",
+  ".gitlab",
+  ".circleci",
+  ".vscode",
+  ".cursor",
+  ".husky",
+  ".changeset",
+  ".idea",
+  ".devcontainer",
+  ".azuredevops",
+]);
+
+const EXTENSIONLESS_FILES = new Set([
+  "authors",
+  "brewfile",
+  "copying",
+  "dockerfile",
+  "gemfile",
+  "gnumakefile",
+  "jenkinsfile",
+  "justfile",
+  "license",
+  "makefile",
+  "notice",
+  "pipfile",
+  "procfile",
+  "rakefile",
+  "vagrantfile",
+]);
+
+function lastSegment(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
+}
+
+function looksLikeFile(path: string): boolean {
+  const base = lastSegment(path);
+  const lowered = base.toLowerCase();
+  if (HIDDEN_DIRECTORIES.has(lowered)) return false;
+  if (EXTENSIONLESS_FILES.has(lowered)) return true;
+  // .env, .gitignore, .tasktopr.toml — hidden files stay exact.
+  if (/^\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(base)) return true;
+  return /\.[A-Za-z0-9]{1,16}$/.test(base);
+}
+
 function scopeFor(path: string): string {
   const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
   if (normalized.includes("*")) return normalized;
   if (normalized.endsWith("/")) return `${normalized}**`;
-  if (normalized.includes(".")) return normalized;
-  return `${normalized}/**`;
+  if (looksLikeFile(normalized)) return normalized;
+  return `${normalized.replace(/\/+$/, "")}/**`;
+}
+
+function quotedPaths(text: string): string[] {
+  return [...text.matchAll(/[`“"'「]([^`”"'」]+)[`”"'」]/g)]
+    .map((match) => match[1])
+    .filter((value): value is string => Boolean(value && value.trim()));
+}
+
+function siblingPaths(text: string, first: string): string[] {
+  const quoted = quotedPaths(text);
+  if (quoted.length > 0) return quoted;
+  const found = [first];
+  const firstAt = text.indexOf(first);
+  const rest = firstAt >= 0 ? text.slice(firstAt + first.length) : "";
+  const extra = new RegExp(
+    String.raw`(?:\s*(?:,|and|or|和|以及|与|或)\s*)` + PATH_CAPTURE,
+    "gi",
+  );
+  for (const match of rest.matchAll(extra)) {
+    const captured = match[1] || match[2];
+    if (captured) found.push(captured);
+  }
+  return found;
 }
 
 function provenance(
@@ -77,6 +160,7 @@ function rule(
   message: string,
   value?: PolicyRule["value"],
   confidence: Provenance["confidence"] = "high",
+  exclusive?: boolean,
 ): PolicyRule {
   return {
     id: toId(adapter, kind, source, line),
@@ -96,6 +180,7 @@ function rule(
         confidence,
       ),
     ],
+    ...(exclusive ? { exclusive: true } : {}),
   };
 }
 
@@ -139,7 +224,9 @@ export function extractTextRules(
     const line = index + 1;
     for (const candidate of PATH_PATTERNS) {
       const match = text.match(candidate.expression);
-      if (match?.[1])
+      const captured = match?.[1] || match?.[2];
+      if (!captured) continue;
+      for (const path of siblingPaths(text, captured)) {
         rules.push(
           rule(
             adapter,
@@ -147,10 +234,14 @@ export function extractTextRules(
             candidate.effect,
             source,
             line,
-            scopeFor(match[1]),
+            scopeFor(path),
             candidate.message,
+            undefined,
+            "high",
+            candidate.exclusive,
           ),
         );
+      }
     }
     const commandMatch = text.match(COMMAND_PATTERNS[1]);
     if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {

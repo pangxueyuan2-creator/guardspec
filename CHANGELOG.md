@@ -7,10 +7,17 @@ All notable changes to GuardSpec are documented here.
 ### Fixed
 
 - Path and command extraction now matches natural Chinese instruction phrasing (no forced Latin-style spaces) while still requiring explicit high-confidence patterns.
+- Exclusive-allow (“only / 只能”) now denies unmatched path actions instead of treating them as not-covered, without compiling a global `**` deny that would also block allowed scopes.
+- Hidden directories such as `.github/workflows` compile to `/**` directory scopes; `.env`, `Dockerfile`, and other extensionless files stay exact.
+- Quoted and sibling paths on one instruction line (`calculator.py` and `test_calculator.py`) become separate rules.
+- Windows `node dist/cli.js` now runs `main()` instead of exiting silently (`fileURLToPath` + `resolve` comparison).
+- Compiled `agent-boundary/v1` path lists are de-duplicated.
 
 ### Added
 
 - Tests covering Chinese path allow/deny, required checks, and disclosure patterns.
+- `guardspec compile` exports a versioned `agent-boundary/v1` JSON contract for TaskToPR / PatchWitness.
+- Spawn regression proving the compiled CLI prints usage and can compile a fixture repo on Windows.
 
 ## v0.1.0 — 2026-08-13
 

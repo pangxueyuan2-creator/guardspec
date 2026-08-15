@@ -32,6 +32,7 @@ export interface PolicyRule {
   severity: Severity;
   message: string;
   provenance: Provenance[];
+  exclusive?: boolean;
 }
 
 export interface Policy {

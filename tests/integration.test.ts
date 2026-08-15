@@ -3,10 +3,11 @@ import { existsSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { scanRepository } from "../src/core/scanner.js";
 import { safeRead } from "../src/core/fs-safe.js";
-import { main } from "../src/cli.js";
+import { isDirectInvocation, main } from "../src/cli.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const FIXTURES = join(ROOT, "tests", "fixtures");
@@ -65,7 +66,18 @@ describe("repository scanning", () => {
     const outside = await mkdtemp(join(tmpdir(), "guardspec-outside-"));
     temporary.push(outside);
     await writeFile(join(outside, "secret.txt"), "secret", "utf8");
-    await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    try {
+      await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (
+        process.platform === "win32" &&
+        (err.code === "EPERM" || err.code === "EACCES")
+      ) {
+        return;
+      }
+      throw error;
+    }
     await expect(safeRead(root, "escaped.txt")).rejects.toThrow();
   });
 });
@@ -98,14 +110,78 @@ describe("CLI behavior", () => {
     expect(existsSync(join(root, ".cursor/rules/guardspec.mdc"))).toBe(true);
     expect(output.join("")).toContain("Created .agent-policy.yml");
   });
-  it("runs the committed demo script against a real temporary Git tree", () => {
-    execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: "pipe" });
-    const result = spawnSync("bash", ["demo/run-demo.sh"], {
+  it("compiles a scanned repository into agent-boundary/v1 JSON", async () => {
+    const root = await copyFixture("python-repo");
+    const output: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string) => {
+      output.push(String(chunk));
+      return true;
+    };
+    try {
+      await main(["init", "--root", root]);
+      await main(["compile", "--root", root, "--json"]);
+    } finally {
+      process.stdout.write = original;
+    }
+    const compiled = output.join("");
+    expect(compiled).toContain("agent-boundary/v1");
+    expect(compiled).toContain("exclusive_allow");
+    expect(compiled).toContain("allowed_paths");
+  });
+  it.skipIf(process.platform === "win32")(
+    "runs the committed demo script against a real temporary Git tree",
+    () => {
+      const pnpm = spawnSync("pnpm", ["--version"], { encoding: "utf8" });
+      const bash = spawnSync("bash", ["--version"], { encoding: "utf8" });
+      if (pnpm.error || pnpm.status !== 0 || bash.error || bash.status !== 0) {
+        return;
+      }
+      execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: "pipe" });
+      const result = spawnSync("bash", ["demo/run-demo.sh"], {
+        cwd: ROOT,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(
+        "correctly blocked the CI workflow change",
+      );
+      expect(result.stdout).toContain("Actual diff");
+    },
+  );
+  it("treats Windows-style argv1 as a direct invocation of the same file", () => {
+    const abs = resolve(join(ROOT, "src", "cli.ts"));
+    const meta = pathToFileURL(abs).href;
+    expect(isDirectInvocation(meta, abs)).toBe(true);
+    expect(isDirectInvocation(meta, undefined)).toBe(false);
+    expect(isDirectInvocation(meta, join(ROOT, "src", "index.ts"))).toBe(false);
+    if (process.platform === "win32") {
+      expect(meta === `file://${abs}`).toBe(false);
+      expect(isDirectInvocation(meta, abs.replaceAll("/", "\\"))).toBe(true);
+      expect(isDirectInvocation(meta, abs.toUpperCase())).toBe(true);
+    }
+  });
+  it("spawns the compiled CLI and prints usage instead of silently exiting", () => {
+    execFileSync(
+      process.execPath,
+      [join(ROOT, "node_modules", "typescript", "bin", "tsc"), "-p", "tsconfig.json"],
+      { cwd: ROOT, stdio: "pipe" },
+    );
+    const cli = join(ROOT, "dist", "cli.js");
+    expect(existsSync(cli)).toBe(true);
+    const help = spawnSync(process.execPath, [cli, "--help"], {
       cwd: ROOT,
       encoding: "utf8",
     });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("correctly blocked the CI workflow change");
-    expect(result.stdout).toContain("Actual diff");
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain("guardspec compile");
+    expect(help.stdout.length).toBeGreaterThan(40);
+    const compile = spawnSync(
+      process.execPath,
+      [cli, "compile", "--json", "--root", join(FIXTURES, "python-repo")],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    expect(compile.status).toBe(0);
+    expect(compile.stdout).toContain("agent-boundary/v1");
   });
 });

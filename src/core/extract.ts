@@ -13,27 +13,27 @@ const PATH_PATTERNS: Array<{
 }> = [
   {
     expression:
-      /(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
+      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s+(?:modify|edit|change|touch|修改|改动|编辑)\s+[`“"'「]?([^`”"'\s,，」]+)[`”"'」]?/i,
     effect: "deny",
     message: "Instruction forbids changes to this path.",
   },
   {
     expression:
-      /(?:only|may only)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
+      /(?:only|may only|只能|仅能|只允许)\s+(?:modify|edit|change|touch|修改|改动|编辑)\s+[`“"'「]?([^`”"'\s,，」]+)[`”"'」]?/i,
     effect: "allow",
     message: "Instruction limits changes to this path scope.",
   },
   {
     expression:
-      /(?:protect|protected)\s+(?:path|area|directory|file)?\s*[:=-]?\s*[`“"]?([^`”"\s,]+)/i,
+      /(?:protect|protected|保护|受保护)\s+(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*[`“"'「]?([^`”"'\s,，」]+)/i,
     effect: "deny",
     message: "Instruction marks this path as protected.",
   },
 ];
 
 const COMMAND_PATTERNS: readonly [RegExp, RegExp] = [
-  /(?:must|always|required to|before (?:committing|submitting|opening))/i,
-  /(?:run|execute)\s+[`“"]([^`”"]+)[`”"]/i,
+  /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
+  /(?:run|execute|运行|执行)\s+[`“"']([^`”"']+)[`”"']/i,
 ];
 
 function toId(
@@ -167,7 +167,7 @@ export function extractTextRules(
       );
     }
     const bareRun = text.match(
-      /^\s*(?:[-*]\s+)?(?:run|execute):\s*`?([^`]+)`?\s*$/i,
+      /^\s*(?:[-*]\s+)?(?:run|execute|运行|执行):\s*`?([^`]+)`?\s*$/i,
     );
     if (bareRun?.[1])
       rules.push(
@@ -183,7 +183,7 @@ export function extractTextRules(
         ),
       );
     if (
-      /(?:must|required to)\s+(?:disclose|mention).*(?:ai|agent|assistance)/i.test(
+      /(?:must|required to|必须|需要)\s+(?:disclose|mention|披露|说明).*(?:ai|agent|assistance|AI|人工智能|助手)/i.test(
         text,
       )
     ) {
@@ -201,7 +201,7 @@ export function extractTextRules(
       );
     }
     const networkDeny = text.match(
-      /(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:use|access|call|reach).*(?:network|internet|external)/i,
+      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要)\s+(?:use|access|call|reach|使用|访问).*(?:network|internet|external|网络|外网)/i,
     );
     if (networkDeny)
       rules.push(

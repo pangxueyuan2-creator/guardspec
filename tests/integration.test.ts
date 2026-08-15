@@ -83,6 +83,27 @@ describe("repository scanning", () => {
 });
 
 describe("CLI behavior", () => {
+  it("executes the built ESM entry point", () => {
+    execFileSync(
+      process.execPath,
+      [
+        join(ROOT, "node_modules", "typescript", "bin", "tsc"),
+        "-p",
+        "tsconfig.json",
+      ],
+      { cwd: ROOT, stdio: "pipe" },
+    );
+    const result = spawnSync(
+      process.execPath,
+      [join(ROOT, "dist", "cli.js"), "--help"],
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Usage:");
+  });
   it("initializes, checks, emits JSON, and generates an adapter", async () => {
     const root = await copyFixture("python-repo");
     const output: string[] = [];

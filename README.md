@@ -1,10 +1,10 @@
 # GuardSpec
 
-**Compile repository intent into enforceable agent boundaries.**
+Turns the rules people write in AGENTS.md, CLAUDE.md, Cursor rules, and similar files into something you can actually check before an agent runs.
 
-Coding agents read files like `AGENTS.md`, `CLAUDE.md`, Copilot instructions, and Cursor rules. Those files are usually just prompt guidance. GuardSpec turns the *explicit* rules it can extract into a reviewable policy, then lets you check whether a path, command, network domain, or MCP server is allowed *before* an agent runs.
+Most of those files are just prompt guidance. GuardSpec extracts the explicit path / command / network / MCP rules it can find, writes a reviewable policy, and lets you ask whether a given path or command is allowed.
 
-It does not run models, execute commands, or act as a sandbox. It is a local preflight tool.
+It does not run models, execute commands, or act as a sandbox. Just a local preflight tool.
 
 ## Quick start
 
@@ -22,10 +22,10 @@ Exit codes: `0` allowed, `2` denied, `3` conflict.
 
 ## What it does
 
-- Discovers common instruction files and extracts explicit path/command/network/MCP rules
-- Detects allow/deny conflicts instead of silently picking one
-- Writes a human-readable `.agent-policy.yml` with provenance (source + line)
-- Can serve the same policy via CLI, read-only MCP, or GitHub Action
+- Finds common instruction files and pulls out explicit allow/deny rules
+- Surfaces conflicts instead of silently picking one side
+- Writes a human-readable `.agent-policy.yml` with source + line provenance
+- Can expose the same policy via CLI, read-only MCP, or GitHub Action
 
 ## Demo
 
@@ -37,16 +37,17 @@ bash demo/run-demo.sh
 ## Commands
 
 ```text
-guardspec scan          Discover rules and conflicts
-guardspec init          Write a starter policy
-guardspec check         Preflight a path/command/network/MCP
-guardspec explain       Show why a rule fired
+guardspec scan          discover rules and conflicts
+guardspec init          write a starter policy
+guardspec check         preflight a path/command/network/MCP
+guardspec explain       show why a rule fired
 guardspec doctor
 guardspec mcp
 ```
 
 ## Status
 
-Early public version. Single maintainer. See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/security-model.md](docs/security-model.md) for boundaries.
+Early public version. Single maintainer.  
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/security-model.md](docs/security-model.md) for the boundaries.
 
-MIT License.
+MIT.

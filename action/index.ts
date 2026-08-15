@@ -1,28 +1,10 @@
 import * as core from "@actions/core";
 import { existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { evaluateTask } from "../src/core/evaluator.js";
 import { loadPolicy } from "../src/core/policy.js";
 import type { CheckReport, Decision } from "../src/core/types.js";
-
-function changedFiles(input: string): string[] {
-  if (input.trim())
-    return input
-      .split(/\r?\n/)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  try {
-    return execFileSync("git", ["diff", "--name-only", "HEAD^", "HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .split(/\r?\n/)
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+import { resolveChangedFiles } from "./changed-files.js";
 
 function sarif(report: CheckReport): Record<string, unknown> {
   const results = report.decisions
@@ -64,7 +46,7 @@ async function run(): Promise<void> {
   }
   const policy = await loadPolicy(root, policyPath);
   const report = evaluateTask(policy, {
-    paths: changedFiles(core.getInput("changed-files")),
+    paths: resolveChangedFiles(core.getInput("changed-files")),
     aiAssisted: core.getBooleanInput("ai-assisted"),
   });
   report.root = root;

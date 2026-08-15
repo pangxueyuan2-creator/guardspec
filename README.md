@@ -27,6 +27,15 @@ Exit codes: `0` allowed, `2` denied, `3` conflict.
 - Writes a human-readable `.agent-policy.yml` with source + line provenance
 - Can expose the same policy via CLI, read-only MCP, or GitHub Action
 
+## Related tools
+
+Different jobs, optional to use together:
+
+- [TaskToPR](https://github.com/pangxueyuan2-creator/tasktopr) — turn one Issue into an isolated branch + real tests + optional PR, with evidence
+- [PatchWitness](https://github.com/pangxueyuan2-creator/patchwitness) — after a change exists, produce a Change Passport for scope, protected paths, and executed checks
+
+GuardSpec only answers the preflight question. It does not depend on the other two.
+
 ## Demo
 
 ```bash

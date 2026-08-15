@@ -25,11 +25,19 @@ function specificity(scope: string): number {
   return scope.replaceAll(/[*!?{}[\]]/g, "").length;
 }
 
+export function filesystemFoldsCase(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  // Windows volumes treat .GITHUB/WORKFLOWS as .github/workflows.
+  // Linux (and default Darwin CI) keep those as distinct paths.
+  return platform === "win32";
+}
+
 function matches(rule: PolicyRule, target: string): boolean {
   if (rule.scope === "**" || rule.scope === "*") return true;
   return picomatch.isMatch(normalizeTarget(target), rule.scope, {
     dot: true,
-    nocase: false,
+    nocase: filesystemFoldsCase(),
   });
 }
 

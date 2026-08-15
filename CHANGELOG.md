@@ -19,6 +19,7 @@ All notable changes to GuardSpec are documented here.
 - Unquoted path captures strip trailing sentence punctuation (`src/.` → `src/`, `calculator.py.` → `calculator.py`) while quoted paths keep interior punctuation.
 - Prose exclusive-allow no longer treats the English word `files` as a scope: `You may only edit files under src/.` compiles to `src/**`, not `files/**`.
 - `Required check:` / `必须运行:` labeled commands are extracted when they pass the required-check allowlist.
+- Path evaluation folds case on Windows (`picomatch` `nocase`) so `.GITHUB/WORKFLOWS/ci.yml` still matches `.github/workflows/**` and `SRC/ok.ts` still matches exclusive `src/**`. Linux stays case-sensitive.
 
 ### Added
 

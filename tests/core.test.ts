@@ -3,7 +3,11 @@ import {
   AGENT_BOUNDARY_SCHEMA,
   compileBoundary,
 } from "../src/core/boundary.js";
-import { evaluate, evaluateTask } from "../src/core/evaluator.js";
+import {
+  evaluate,
+  evaluateTask,
+  filesystemFoldsCase,
+} from "../src/core/evaluator.js";
 import { extractTextRules, isSafeRequiredCheck } from "../src/core/extract.js";
 import {
   parsePolicy,
@@ -362,6 +366,43 @@ describe("exclusive allow and compiled boundary", () => {
     });
     expect(report.valid).toBe(false);
     expect(report.exitCode).toBe(2);
+  });
+  it("folds case for path rules on Windows filesystems only", () => {
+    expect(filesystemFoldsCase("win32")).toBe(true);
+    expect(filesystemFoldsCase("linux")).toBe(false);
+    expect(filesystemFoldsCase("darwin")).toBe(false);
+    const denyPolicy: Policy = {
+      version: 1,
+      name: "casefold-deny",
+      rules: [
+        rule("deny-ci", "deny", ".github/workflows/**"),
+        rule("deny-git", "deny", ".git/**"),
+        rule("allow-src", "allow", "src/**"),
+      ],
+    };
+    const workflow = evaluate(denyPolicy, "path", ".GITHUB/WORKFLOWS/ci.yml");
+    const src = evaluate(denyPolicy, "path", "SRC/ok.ts");
+    const gitDir = evaluate(denyPolicy, "path", ".GIT/config");
+    if (process.platform === "win32") {
+      expect(workflow.status).toBe("denied");
+      expect(src.status).toBe("allowed");
+      expect(gitDir.status).toBe("denied");
+    } else {
+      expect(workflow.status).toBe("not-covered");
+      expect(src.status).toBe("not-covered");
+      expect(gitDir.status).toBe("not-covered");
+    }
+    const extracted = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "Only modify `src/`.",
+    );
+    const exclusive: Policy = { version: 1, name: "casefold-ex", rules: extracted };
+    if (process.platform === "win32") {
+      expect(evaluate(exclusive, "path", "SRC/ok.ts").status).toBe("allowed");
+    } else {
+      expect(evaluate(exclusive, "path", "SRC/ok.ts").status).toBe("denied");
+    }
   });
   it("does not apply exclusive path scope to commands", () => {
     const extracted = extractTextRules(

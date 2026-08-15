@@ -50811,12 +50811,17 @@ function normalizeTarget(target) {
 function specificity(scope) {
     return scope.replaceAll(/[*!?{}[\]]/g, "").length;
 }
+function filesystemFoldsCase(platform = process.platform) {
+    // Windows volumes treat .GITHUB/WORKFLOWS as .github/workflows.
+    // Linux (and default Darwin CI) keep those as distinct paths.
+    return platform === "win32";
+}
 function matches(rule, target) {
     if (rule.scope === "**" || rule.scope === "*")
         return true;
     return picomatch_default().isMatch(normalizeTarget(target), rule.scope, {
         dot: true,
-        nocase: false,
+        nocase: filesystemFoldsCase(),
     });
 }
 function ruleKindForAction(action) {

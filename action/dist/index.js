@@ -42321,8 +42321,6 @@ function getIDToken(aud) {
 //# sourceMappingURL=core.js.map
 ;// CONCATENATED MODULE: external "node:fs"
 const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
-;// CONCATENATED MODULE: external "node:child_process"
-const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 // EXTERNAL MODULE: ./node_modules/.pnpm/picomatch@4.0.5/node_modules/picomatch/index.js
@@ -42424,24 +42422,25 @@ async function fs_safe_walkRepository(root) {
 ;// CONCATENATED MODULE: ./src/core/extract.ts
 const PATH_PATTERNS = [
     {
-        expression: /(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
+        // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
+        expression: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
         effect: "deny",
         message: "Instruction forbids changes to this path.",
     },
     {
-        expression: /(?:only|may only)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
+        expression: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
         effect: "allow",
         message: "Instruction limits changes to this path scope.",
     },
     {
-        expression: /(?:protect|protected)\s+(?:path|area|directory|file)?\s*[:=-]?\s*[`“"]?([^`”"\s,]+)/i,
+        expression: /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*[`“"'「]?([^`”"'\s,，。；」]+)/i,
         effect: "deny",
         message: "Instruction marks this path as protected.",
     },
 ];
 const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
-    /(?:must|always|required to|before (?:committing|submitting|opening))/i,
-    /(?:run|execute)\s+[`“"]([^`”"]+)[`”"]/i,
+    /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
+    /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
 ]));
 function toId(adapter, kind, source, line) {
     return `${adapter}-${kind}-${source
@@ -42516,13 +42515,13 @@ function extract_extractTextRules(source, adapter, content) {
         if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
             rules.push(rule(adapter, "check", "require", source, line, "**", "Instruction requires this check.", commandMatch[1]));
         }
-        const bareRun = text.match(/^\s*(?:[-*]\s+)?(?:run|execute):\s*`?([^`]+)`?\s*$/i);
+        const bareRun = text.match(/^\s*(?:[-*]\s+)?(?:run|execute|运行|执行):\s*`?([^`]+)`?\s*$/i);
         if (bareRun?.[1])
             rules.push(rule(adapter, "check", "require", source, line, "**", "Explicit listed check.", bareRun[1]));
-        if (/(?:must|required to)\s+(?:disclose|mention).*(?:ai|agent|assistance)/i.test(text)) {
+        if (/(?:must|required to|必须|需要)\s*(?:disclose|mention|披露|说明).*(?:ai|agent|assistance|AI|人工智能|助手)/i.test(text)) {
             rules.push(rule(adapter, "disclosure", "require", source, line, "**", "Instruction requires AI assistance disclosure.", true));
         }
-        const networkDeny = text.match(/(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:use|access|call|reach).*(?:network|internet|external)/i);
+        const networkDeny = text.match(/(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要)\s*(?:use|access|call|reach|使用|访问).*(?:network|internet|external|网络|外网)/i);
         if (networkDeny)
             rules.push(rule(adapter, "network", "deny", source, line, "*", "Instruction forbids external network access."));
     }
@@ -50648,6 +50647,46 @@ function evaluateTask(policy, request) {
     };
 }
 
+;// CONCATENATED MODULE: external "node:child_process"
+const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
+;// CONCATENATED MODULE: ./action/changed-files.ts
+
+
+function eventBase(eventPath) {
+    if (!eventPath)
+        return undefined;
+    const payload = JSON.parse((0,external_node_fs_namespaceObject.readFileSync)(eventPath, "utf8"));
+    const pullRequestBase = payload.pull_request?.base?.sha;
+    if (typeof pullRequestBase === "string" && pullRequestBase.trim())
+        return pullRequestBase;
+    if (typeof payload.before === "string" && payload.before.trim())
+        return payload.before;
+    return undefined;
+}
+function resolveChangedFiles(input, options = {}) {
+    if (input.trim())
+        return input
+            .split(/\r?\n/)
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    const base = eventBase(options.eventPath ?? process.env.GITHUB_EVENT_PATH);
+    const diffArgs = base
+        ? ["diff", "--name-only", "--no-renames", base, "HEAD"]
+        : ["diff", "--name-only", "--no-renames", "HEAD^", "HEAD"];
+    try {
+        return (0,external_node_child_process_namespaceObject.execFileSync)("git", diffArgs, {
+            cwd: options.cwd,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+        })
+            .split(/\r?\n/)
+            .filter(Boolean);
+    }
+    catch {
+        throw new Error("Unable to determine changed files; provide changed-files explicitly or fetch the event base revision.");
+    }
+}
+
 ;// CONCATENATED MODULE: ./action/index.ts
 
 
@@ -50655,24 +50694,6 @@ function evaluateTask(policy, request) {
 
 
 
-function changedFiles(input) {
-    if (input.trim())
-        return input
-            .split(/\r?\n/)
-            .map((entry) => entry.trim())
-            .filter(Boolean);
-    try {
-        return (0,external_node_child_process_namespaceObject.execFileSync)("git", ["diff", "--name-only", "HEAD^", "HEAD"], {
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "ignore"],
-        })
-            .split(/\r?\n/)
-            .filter(Boolean);
-    }
-    catch {
-        return [];
-    }
-}
 function sarif(report) {
     const results = report.decisions
         .filter((decision) => !decision.allowed && decision.status !== "not-covered")
@@ -50708,7 +50729,7 @@ async function run() {
     }
     const policy = await loadPolicy(root, policyPath);
     const report = evaluateTask(policy, {
-        paths: changedFiles(getInput("changed-files")),
+        paths: resolveChangedFiles(getInput("changed-files")),
         aiAssisted: getBooleanInput("ai-assisted"),
     });
     report.root = root;

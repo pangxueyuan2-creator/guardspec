@@ -22,6 +22,7 @@ All notable changes to GuardSpec are documented here.
 
 ### Added
 
+- `guardspec --version` (and `--version --json`) reads `package.json` next to the installed `dist/` so source and release artifacts report the same version; `doctor` now includes `version`.
 - Tests covering Chinese path allow/deny, required checks, and disclosure patterns.
 - `guardspec compile` exports a versioned `agent-boundary/v1` JSON contract for TaskToPR / PatchWitness.
 - Spawn regression proving the compiled CLI prints usage and can compile a fixture repo on Windows.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
@@ -37,10 +37,29 @@ const EXIT = {
   system: 5,
 } as const;
 
+export function packageVersion(): string {
+  try {
+    const pkgPath = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "package.json",
+    );
+    const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      version?: unknown;
+    };
+    return typeof parsed.version === "string" && parsed.version.length > 0
+      ? parsed.version
+      : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 function usage(): string {
   return `GuardSpec — compile repository intent into enforceable agent boundaries.
 
 Usage:
+  guardspec --version
   guardspec scan [--root <path>] [--json] [--write]
   guardspec init [--root <path>] [--force]
   guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--json]
@@ -137,6 +156,16 @@ async function currentPolicy(root: string, selected?: string): Promise<Policy> {
 }
 
 async function handle(args: Args): Promise<number> {
+  if (flag(args, "version")) {
+    const version = packageVersion();
+    writeOutput(
+      flag(args, "json") === "true"
+        ? { name: "guardspec", version }
+        : version,
+      flag(args, "json") === "true",
+    );
+    return EXIT.success;
+  }
   if (!args.command || flag(args, "help")) {
     process.stdout.write(usage());
     return EXIT.success;
@@ -274,6 +303,7 @@ async function handle(args: Args): Promise<number> {
   if (args.command === "doctor") {
     const result = {
       root,
+      version: packageVersion(),
       node: process.version,
       policyPresent: existsSync(
         resolve(root, flag(args, "policy") ?? ".agent-policy.yml"),

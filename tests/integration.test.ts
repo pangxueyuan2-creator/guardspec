@@ -196,7 +196,30 @@ describe("CLI behavior", () => {
     });
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("guardspec compile");
+    expect(help.stdout).toContain("guardspec --version");
     expect(help.stdout.length).toBeGreaterThan(40);
+    const version = spawnSync(process.execPath, [cli, "--version"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(version.status).toBe(0);
+    expect(version.stdout.trim()).toBe("0.1.0");
+    const versionJson = spawnSync(
+      process.execPath,
+      [cli, "--version", "--json"],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    expect(versionJson.status).toBe(0);
+    expect(JSON.parse(versionJson.stdout)).toEqual({
+      name: "guardspec",
+      version: "0.1.0",
+    });
+    const doctor = spawnSync(process.execPath, [cli, "doctor", "--json"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(doctor.status).toBe(0);
+    expect(JSON.parse(doctor.stdout).version).toBe("0.1.0");
     const compile = spawnSync(
       process.execPath,
       [cli, "compile", "--json", "--root", join(FIXTURES, "python-repo")],

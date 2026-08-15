@@ -21,3 +21,4 @@ export {
   renderAdapter,
   writeAdapter,
 } from "./adapters/generate.js";
+export { extractTextRules, extractCodeowners, isSafeRequiredCheck } from "./core/extract.js";

@@ -1,3 +1,4 @@
+import { isSafeRequiredCheck } from "./extract.js";
 import type { Policy, PolicyRule } from "./types.js";
 
 export const AGENT_BOUNDARY_SCHEMA =
@@ -23,6 +24,20 @@ export interface AgentBoundary {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function uniqueProvenance(
+  items: AgentBoundaryProvenance[],
+): AgentBoundaryProvenance[] {
+  const seen = new Set<string>();
+  const out: AgentBoundaryProvenance[] = [];
+  for (const item of items) {
+    const key = `${item.source}\0${item.rule}\0${item.reason}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function provenanceOf(rule: PolicyRule): AgentBoundaryProvenance {
@@ -54,7 +69,8 @@ export function compileBoundary(policy: Policy): AgentBoundary {
         (rule) =>
           (rule.kind === "check" || rule.kind === "command") &&
           rule.effect === "require" &&
-          typeof rule.value === "string",
+          typeof rule.value === "string" &&
+          isSafeRequiredCheck(String(rule.value)),
       )
       .map((rule) => String(rule.value)),
   );
@@ -67,6 +83,8 @@ export function compileBoundary(policy: Policy): AgentBoundary {
     denied_paths,
     protected_paths: [...denied_paths],
     required_checks,
-    provenance: [...exclusiveAllows, ...pathDenies].map(provenanceOf),
+    provenance: uniqueProvenance(
+      [...exclusiveAllows, ...pathDenies].map(provenanceOf),
+    ),
   };
 }

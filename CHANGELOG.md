@@ -12,6 +12,9 @@ All notable changes to GuardSpec are documented here.
 - Quoted and sibling paths on one instruction line (`calculator.py` and `test_calculator.py`) become separate rules.
 - Windows `node dist/cli.js` now runs `main()` instead of exiting silently (`fileURLToPath` + `resolve` comparison).
 - Compiled `agent-boundary/v1` path lists are de-duplicated.
+- Extracted required checks that are shell interpreters, unknown executables (`curl`, `wget`, versioned `python3.14`), or inline interpreter payloads (`python -c`, `cmd /c`, `bash -c`) are dropped instead of being forwarded to PatchWitness.
+- Sibling path rules on one instruction line now get unique, scope-qualified ids so generated YAML survives `parsePolicy` duplicate-id rejection.
+- Boundary provenance entries are de-duplicated by source/rule/reason.
 
 ### Added
 

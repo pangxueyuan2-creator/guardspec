@@ -51,16 +51,111 @@ const COMMAND_PATTERNS: readonly [RegExp, RegExp] = [
   /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
 ];
 
+const SHELL_INTERPRETERS = new Set([
+  "cmd",
+  "cmd.exe",
+  "powershell",
+  "powershell.exe",
+  "pwsh",
+  "pwsh.exe",
+  "bash",
+  "sh",
+  "zsh",
+  "fish",
+  "wscript",
+  "cscript",
+  "mshta",
+]);
+
+const POLICY_EXECUTABLES = new Set([
+  "python",
+  "python.exe",
+  "python3",
+  "python3.exe",
+  "py",
+  "py.exe",
+  "pytest",
+  "pytest.exe",
+  "ruff",
+  "ruff.exe",
+  "mypy",
+  "mypy.exe",
+  "npm",
+  "npm.cmd",
+  "npx",
+  "npx.cmd",
+  "node",
+  "node.exe",
+  "pnpm",
+  "pnpm.cmd",
+  "yarn",
+  "yarn.cmd",
+  "bun",
+  "bun.exe",
+  "go",
+  "go.exe",
+  "cargo",
+  "cargo.exe",
+  "make",
+  "make.exe",
+  "uv",
+  "uv.exe",
+  "hatch",
+  "hatch.exe",
+  "tox",
+  "tox.exe",
+  "nox",
+  "nox.exe",
+]);
+
+export function isSafeRequiredCheck(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) return false;
+  if (/[;&|`$<>\n\r]/.test(trimmed)) return false;
+  const first = trimmed.split(/\s+/, 1)[0]?.replace(/^['"]+|['"]+$/g, "") ?? "";
+  const base = first.replaceAll("\\", "/").split("/").pop()?.toLowerCase() ?? "";
+  if (SHELL_INTERPRETERS.has(base)) return false;
+  if (!POLICY_EXECUTABLES.has(base)) return false;
+  if (
+    /\b(?:python(?:3)?|py|node|perl|ruby|php)(?:\.exe)?\s+(?:-[ce]|--eval)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function slugPart(value: string): string {
+  return value
+    .replaceAll(/[^a-zA-Z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "")
+    .toLowerCase();
+}
+
 function toId(
   adapter: SourceAdapter,
   kind: RuleKind,
   source: string,
   line: number,
+  disambiguator?: string,
 ): string {
-  return `${adapter}-${kind}-${source
-    .replaceAll(/[^a-zA-Z0-9]+/g, "-")
-    .replaceAll(/^-|-$/g, "")
-    .toLowerCase()}-${line}`;
+  const parts = [adapter, kind, slugPart(source), String(line)];
+  if (disambiguator) {
+    const extra = slugPart(disambiguator).slice(0, 48);
+    if (extra) parts.push(extra);
+  }
+  return parts.join("-");
+}
+
+function uniquifyIds(rules: PolicyRule[]): PolicyRule[] {
+  const seen = new Map<string, number>();
+  return rules.map((entry) => {
+    const count = seen.get(entry.id) ?? 0;
+    seen.set(entry.id, count + 1);
+    if (count === 0) return entry;
+    return { ...entry, id: `${entry.id}-${count + 1}` };
+  });
 }
 
 const HIDDEN_DIRECTORIES = new Set([
@@ -163,7 +258,7 @@ function rule(
   exclusive?: boolean,
 ): PolicyRule {
   return {
-    id: toId(adapter, kind, source, line),
+    id: toId(adapter, kind, source, line, scope),
     kind,
     effect,
     scope,
@@ -244,7 +339,11 @@ export function extractTextRules(
       }
     }
     const commandMatch = text.match(COMMAND_PATTERNS[1]);
-    if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
+    if (
+      commandMatch?.[1] &&
+      COMMAND_PATTERNS[0].test(text) &&
+      isSafeRequiredCheck(commandMatch[1])
+    ) {
       rules.push(
         rule(
           adapter,
@@ -261,7 +360,7 @@ export function extractTextRules(
     const bareRun = text.match(
       /^\s*(?:[-*]\s+)?(?:run|execute|运行|执行):\s*`?([^`]+)`?\s*$/i,
     );
-    if (bareRun?.[1])
+    if (bareRun?.[1] && isSafeRequiredCheck(bareRun[1]))
       rules.push(
         rule(
           adapter,
@@ -308,14 +407,14 @@ export function extractTextRules(
         ),
       );
   }
-  return rules;
+  return uniquifyIds(rules);
 }
 
 export function extractCodeowners(
   source: string,
   content: string,
 ): PolicyRule[] {
-  return content.split(/\r?\n/).flatMap((text, index) => {
+  return uniquifyIds(content.split(/\r?\n/).flatMap((text, index) => {
     const trimmed = text.trim();
     if (!trimmed || trimmed.startsWith("#")) return [];
     const [pattern, ...owners] = trimmed.split(/\s+/);
@@ -332,5 +431,5 @@ export function extractCodeowners(
         owners,
       ),
     ];
-  });
+  }));
 }

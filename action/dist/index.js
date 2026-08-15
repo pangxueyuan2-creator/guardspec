@@ -42423,21 +42423,28 @@ async function fs_safe_walkRepository(root) {
 const PATH_PATTERNS = [
     {
         // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
-        expression: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+        expression: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
         effect: "deny",
         message: "Instruction forbids changes to this path.",
     },
     {
-        expression: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*[`“"'「]?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+        expression: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
         effect: "allow",
         message: "Instruction limits changes to this path scope.",
     },
     {
-        expression: /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*[`“"'「]?([^`”"'\s,，。；」]+)/i,
+        expression: /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，。；」]+)/i,
         effect: "deny",
         message: "Instruction marks this path as protected.",
     },
 ];
+const SENTENCE_SUFFIX = /[.!?,;:。！？、；：…]+$/u;
+function pathToken(match) {
+    const token = match[2];
+    if (!token || match[1])
+        return token;
+    return token.replace(SENTENCE_SUFFIX, "") || token;
+}
 const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
     /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
     /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
@@ -42508,8 +42515,9 @@ function extract_extractTextRules(source, adapter, content) {
         const line = index + 1;
         for (const candidate of PATH_PATTERNS) {
             const match = text.match(candidate.expression);
-            if (match?.[1])
-                rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(match[1]), candidate.message));
+            const token = match ? pathToken(match) : undefined;
+            if (token)
+                rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(token), candidate.message));
         }
         const commandMatch = text.match(COMMAND_PATTERNS[1]);
         if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {

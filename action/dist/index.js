@@ -42321,8 +42321,6 @@ function getIDToken(aud) {
 //# sourceMappingURL=core.js.map
 ;// CONCATENATED MODULE: external "node:fs"
 const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
-;// CONCATENATED MODULE: external "node:child_process"
-const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 // EXTERNAL MODULE: ./node_modules/.pnpm/picomatch@4.0.5/node_modules/picomatch/index.js
@@ -50724,6 +50722,46 @@ function evaluateTask(policy, request) {
     };
 }
 
+;// CONCATENATED MODULE: external "node:child_process"
+const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
+;// CONCATENATED MODULE: ./action/changed-files.ts
+
+
+function eventBase(eventPath) {
+    if (!eventPath)
+        return undefined;
+    const payload = JSON.parse((0,external_node_fs_namespaceObject.readFileSync)(eventPath, "utf8"));
+    const pullRequestBase = payload.pull_request?.base?.sha;
+    if (typeof pullRequestBase === "string" && pullRequestBase.trim())
+        return pullRequestBase;
+    if (typeof payload.before === "string" && payload.before.trim())
+        return payload.before;
+    return undefined;
+}
+function resolveChangedFiles(input, options = {}) {
+    if (input.trim())
+        return input
+            .split(/\r?\n/)
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    const base = eventBase(options.eventPath ?? process.env.GITHUB_EVENT_PATH);
+    const diffArgs = base
+        ? ["diff", "--name-only", "--no-renames", base, "HEAD"]
+        : ["diff", "--name-only", "--no-renames", "HEAD^", "HEAD"];
+    try {
+        return (0,external_node_child_process_namespaceObject.execFileSync)("git", diffArgs, {
+            cwd: options.cwd,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+        })
+            .split(/\r?\n/)
+            .filter(Boolean);
+    }
+    catch {
+        throw new Error("Unable to determine changed files; provide changed-files explicitly or fetch the event base revision.");
+    }
+}
+
 ;// CONCATENATED MODULE: ./action/index.ts
 
 
@@ -50731,24 +50769,6 @@ function evaluateTask(policy, request) {
 
 
 
-function changedFiles(input) {
-    if (input.trim())
-        return input
-            .split(/\r?\n/)
-            .map((entry) => entry.trim())
-            .filter(Boolean);
-    try {
-        return (0,external_node_child_process_namespaceObject.execFileSync)("git", ["diff", "--name-only", "HEAD^", "HEAD"], {
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "ignore"],
-        })
-            .split(/\r?\n/)
-            .filter(Boolean);
-    }
-    catch {
-        return [];
-    }
-}
 function sarif(report) {
     const results = report.decisions
         .filter((decision) => !decision.allowed && decision.status !== "not-covered")
@@ -50784,7 +50804,7 @@ async function run() {
     }
     const policy = await loadPolicy(root, policyPath);
     const report = evaluateTask(policy, {
-        paths: changedFiles(getInput("changed-files")),
+        paths: resolveChangedFiles(getInput("changed-files")),
         aiAssisted: getBooleanInput("ai-assisted"),
     });
     report.root = root;

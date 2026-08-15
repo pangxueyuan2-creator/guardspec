@@ -7,10 +7,14 @@ All notable changes to GuardSpec are documented here.
 ### Fixed
 
 - Path and command extraction now matches natural Chinese instruction phrasing (no forced Latin-style spaces) while still requiring explicit high-confidence patterns.
+- Unquoted sentences such as `Never modify calculator.py.` no longer extract `calculator.py.` and leave the real `calculator.py` unprotected. Quoted tokens keep their literal trailing punctuation so a real file named `hello!` or `file.` is not rewritten.
+- The compiled CLI now starts on Windows. The previous `import.meta.url === file://${argv[1]}` check never matched `C:\\...` paths, so `guardspec scan|check` was a silent no-op.
 
 ### Added
 
 - Tests covering Chinese path allow/deny, required checks, and disclosure patterns.
+- Trailing-punctuation extraction corpus (ASCII/Chinese sentence marks, quotes, legal dotted names, globs) plus false-ALLOW / false-DENY evaluations.
+- `check --json` contract fields: `schema_version`, `policy_digest`, `decision`, `matched_rules`, `protected_paths`. Digest is stable across `generatedAt` / provenance changes.
 
 ## v0.1.0 — 2026-08-13
 

@@ -37,6 +37,8 @@ Exit codes:
 - `2` denied
 - `3` conflict
 
+`check --json` also emits a machine-readable contract (`schema_version`, `policy_digest`, `decision`, `matched_rules`, `protected_paths`) so downstream tools can fail closed by reading the file instead of importing GuardSpec.
+
 ## What it does
 
 - Finds common instruction files and extracts explicit allow/deny rules

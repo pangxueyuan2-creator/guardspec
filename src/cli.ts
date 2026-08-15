@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
 import { loadPolicy, policyTemplate, writePolicy } from "./core/policy.js";
@@ -248,4 +249,20 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) void main();
+/** Compare ESM import URL to argv[1] without assuming POSIX `file://${path}`. */
+export function isDirectCliInvocation(
+  importMetaUrl: string,
+  argv1: string | undefined,
+): boolean {
+  if (!argv1) return false;
+  try {
+    return (
+      fileURLToPath(importMetaUrl).toLowerCase() ===
+      resolve(argv1).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectCliInvocation(import.meta.url, process.argv[1])) void main();

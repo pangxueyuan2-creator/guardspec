@@ -1,4 +1,6 @@
 import picomatch from "picomatch";
+import { policyDigest } from "./policy.js";
+import { detectConflicts } from "./scanner.js";
 import type {
   CheckReport,
   Conflict,
@@ -8,7 +10,7 @@ import type {
   RuleKind,
   TaskRequest,
 } from "./types.js";
-import { detectConflicts } from "./scanner.js";
+import { CHECK_SCHEMA_VERSION } from "./types.js";
 
 const EFFECT_PRIORITY: Record<PolicyRule["effect"], number> = {
   deny: 4,
@@ -148,11 +150,31 @@ export function evaluateTask(
     decisions.every(
       (decision) => decision.allowed || decision.status === "not-covered",
     );
+  const hasConflict =
+    conflicts.length > 0 ||
+    decisions.some((decision) => decision.status === "conflict");
+  const matched = new Set<string>();
+  for (const decision of decisions)
+    for (const rule of decision.matchedRules) matched.add(rule.id);
+  const protectedPaths = [
+    ...new Set(
+      policy.rules
+        .filter((rule) => rule.kind === "path" && rule.effect === "deny")
+        .map((rule) => rule.scope),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
   return {
     root: "",
     decisions,
     conflicts,
     valid,
     exitCode: conflicts.length > 0 ? 3 : valid ? 0 : 2,
+    schema_version: CHECK_SCHEMA_VERSION,
+    policy_digest: policyDigest(policy),
+    decision: hasConflict ? "conflict" : valid ? "allow" : "deny",
+    matched_rules: [...matched].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    protected_paths: protectedPaths,
   };
 }

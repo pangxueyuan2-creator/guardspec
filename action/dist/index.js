@@ -42328,220 +42328,10 @@ const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(impo
 // EXTERNAL MODULE: ./node_modules/.pnpm/picomatch@4.0.5/node_modules/picomatch/index.js
 var picomatch = __nccwpck_require__(6030);
 var picomatch_default = /*#__PURE__*/__nccwpck_require__.n(picomatch);
+// EXTERNAL MODULE: external "node:crypto"
+var external_node_crypto_ = __nccwpck_require__(7598);
 // EXTERNAL MODULE: external "node:fs/promises"
 var promises_ = __nccwpck_require__(1455);
-;// CONCATENATED MODULE: ./src/core/fs-safe.ts
-
-
-
-const IGNORED_DIRECTORIES = new Set([
-    ".git",
-    "node_modules",
-    ".next",
-    "dist",
-    "build",
-    "coverage",
-    ".cache",
-    ".guardspec",
-]);
-const MAX_FILE_BYTES = 512_000;
-const MAX_FILES = 2_000;
-function normalizeRepositoryPath(input) {
-    const universal = input.replaceAll("\\", "/");
-    if (!universal ||
-        (0,external_node_path_namespaceObject.isAbsolute)(universal) ||
-        external_node_path_namespaceObject.win32.isAbsolute(input) ||
-        universal.startsWith("//")) {
-        throw new Error(`Path must be a non-empty repository-relative path: ${input}`);
-    }
-    const parts = universal.split("/");
-    if (parts.some((part) => part === ".." || part === "" || part === ".")) {
-        throw new Error(`Unsafe relative path: ${input}`);
-    }
-    return parts.join("/");
-}
-function repositoryRoot(start) {
-    return realpathSync(start);
-}
-function fs_safe_safeResolve(root, candidate) {
-    const normalized = normalizeRepositoryPath(candidate);
-    const target = (0,external_node_path_namespaceObject.resolve)(root, ...normalized.split("/"));
-    const rel = (0,external_node_path_namespaceObject.relative)(root, target);
-    if (rel === "" ||
-        rel.startsWith(`..${external_node_path_namespaceObject.sep}`) ||
-        rel === ".." ||
-        (0,external_node_path_namespaceObject.isAbsolute)(rel)) {
-        throw new Error(`Path escapes repository root: ${candidate}`);
-    }
-    return target;
-}
-async function fs_safe_safeRead(root, candidate) {
-    const target = fs_safe_safeResolve(root, candidate);
-    const metadata = await stat(target);
-    if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
-        throw new Error(`Refusing to read unsupported or oversized file: ${candidate}`);
-    }
-    const resolvedTarget = realpathSync(target);
-    const rel = relative(root, resolvedTarget);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
-        throw new Error(`Symlink escapes repository root: ${candidate}`);
-    }
-    return readFile(resolvedTarget, "utf8");
-}
-async function fs_safe_walkRepository(root) {
-    const output = [];
-    async function walk(current) {
-        if (output.length >= MAX_FILES)
-            return;
-        const entries = await readdir(current, { withFileTypes: true });
-        for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-            if (output.length >= MAX_FILES)
-                return;
-            const full = resolve(current, entry.name);
-            const relativePath = relative(root, full).split(sep).join("/");
-            if (entry.isSymbolicLink())
-                continue;
-            if (entry.isDirectory()) {
-                if (!IGNORED_DIRECTORIES.has(entry.name))
-                    await walk(full);
-                continue;
-            }
-            if (!entry.isFile())
-                continue;
-            try {
-                if (lstatSync(full).size <= MAX_FILE_BYTES)
-                    output.push(relativePath);
-            }
-            catch {
-                // Concurrent workspace mutations are ignored; callers retain deterministic sorted output.
-            }
-        }
-    }
-    await walk(root);
-    return output.sort((a, b) => a.localeCompare(b));
-}
-
-;// CONCATENATED MODULE: ./src/core/extract.ts
-const PATH_PATTERNS = [
-    {
-        expression: /(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
-        effect: "deny",
-        message: "Instruction forbids changes to this path.",
-    },
-    {
-        expression: /(?:only|may only)\s+(?:modify|edit|change|touch)\s+[`“"]?([^`”"\s,]+)[`”"]?/i,
-        effect: "allow",
-        message: "Instruction limits changes to this path scope.",
-    },
-    {
-        expression: /(?:protect|protected)\s+(?:path|area|directory|file)?\s*[:=-]?\s*[`“"]?([^`”"\s,]+)/i,
-        effect: "deny",
-        message: "Instruction marks this path as protected.",
-    },
-];
-const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
-    /(?:must|always|required to|before (?:committing|submitting|opening))/i,
-    /(?:run|execute)\s+[`“"]([^`”"]+)[`”"]/i,
-]));
-function toId(adapter, kind, source, line) {
-    return `${adapter}-${kind}-${source
-        .replaceAll(/[^a-zA-Z0-9]+/g, "-")
-        .replaceAll(/^-|-$/g, "")
-        .toLowerCase()}-${line}`;
-}
-function scopeFor(path) {
-    const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
-    if (normalized.includes("*"))
-        return normalized;
-    if (normalized.endsWith("/"))
-        return `${normalized}**`;
-    if (normalized.includes("."))
-        return normalized;
-    return `${normalized}/**`;
-}
-function provenance(source, line, adapter, excerpt, confidence = "high") {
-    return { source, line, adapter, excerpt: excerpt.slice(0, 300), confidence };
-}
-function rule(adapter, kind, effect, source, line, scope, message, value, confidence = "high") {
-    return {
-        id: toId(adapter, kind, source, line),
-        kind,
-        effect,
-        scope,
-        ...(value === undefined ? {} : { value }),
-        severity: effect === "deny" ? "high" : effect === "require" ? "medium" : "low",
-        message,
-        provenance: [
-            provenance(source, line, adapter, `${kind}:${effect}:${scope}`, confidence),
-        ],
-    };
-}
-function extract_adapterForPath(path) {
-    if (path === "AGENTS.md" ||
-        path.endsWith("/AGENTS.md") ||
-        path.endsWith("/AGENTS.override.md"))
-        return "agents-md";
-    if (path === "CLAUDE.md" || path.startsWith(".claude/"))
-        return "claude";
-    if (path === ".github/copilot-instructions.md" ||
-        path.startsWith(".github/instructions/"))
-        return "copilot";
-    if (path.startsWith(".cursor/rules/") || path === ".cursorrules")
-        return "cursor";
-    if (path === "GEMINI.md" || path.startsWith(".gemini/"))
-        return "gemini";
-    if (path === "opencode.json")
-        return "opencode";
-    if (path === ".mcp.json")
-        return "mcp";
-    if (path === "CODEOWNERS" || path.endsWith("/CODEOWNERS"))
-        return "codeowners";
-    if (path === "CONTRIBUTING.md" ||
-        path === "SECURITY.md" ||
-        path === "README.md" ||
-        path.endsWith("/README.md"))
-        return "repository-doc";
-    return undefined;
-}
-function extract_extractTextRules(source, adapter, content) {
-    const rules = [];
-    for (const [index, text] of content.split(/\r?\n/).entries()) {
-        const line = index + 1;
-        for (const candidate of PATH_PATTERNS) {
-            const match = text.match(candidate.expression);
-            if (match?.[1])
-                rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(match[1]), candidate.message));
-        }
-        const commandMatch = text.match(COMMAND_PATTERNS[1]);
-        if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
-            rules.push(rule(adapter, "check", "require", source, line, "**", "Instruction requires this check.", commandMatch[1]));
-        }
-        const bareRun = text.match(/^\s*(?:[-*]\s+)?(?:run|execute):\s*`?([^`]+)`?\s*$/i);
-        if (bareRun?.[1])
-            rules.push(rule(adapter, "check", "require", source, line, "**", "Explicit listed check.", bareRun[1]));
-        if (/(?:must|required to)\s+(?:disclose|mention).*(?:ai|agent|assistance)/i.test(text)) {
-            rules.push(rule(adapter, "disclosure", "require", source, line, "**", "Instruction requires AI assistance disclosure.", true));
-        }
-        const networkDeny = text.match(/(?:do not|don't|never|forbid(?:den)?|must not)\s+(?:use|access|call|reach).*(?:network|internet|external)/i);
-        if (networkDeny)
-            rules.push(rule(adapter, "network", "deny", source, line, "*", "Instruction forbids external network access."));
-    }
-    return rules;
-}
-function extract_extractCodeowners(source, content) {
-    return content.split(/\r?\n/).flatMap((text, index) => {
-        const trimmed = text.trim();
-        if (!trimmed || trimmed.startsWith("#"))
-            return [];
-        const [pattern, ...owners] = trimmed.split(/\s+/);
-        if (!pattern || owners.length === 0)
-            return [];
-        return [
-            rule("codeowners", "approval", "require", source, index + 1, scopeFor(pattern), "CODEOWNERS requires owner review for this scope.", owners),
-        ];
-    });
-}
-
 // EXTERNAL MODULE: ./node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(5272);
 ;// CONCATENATED MODULE: ./node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
@@ -50272,7 +50062,99 @@ function preprocess(fn, schema) {
     });
 }
 
+;// CONCATENATED MODULE: ./src/core/fs-safe.ts
+
+
+
+const IGNORED_DIRECTORIES = new Set([
+    ".git",
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    "coverage",
+    ".cache",
+    ".guardspec",
+]);
+const MAX_FILE_BYTES = 512_000;
+const MAX_FILES = 2_000;
+function normalizeRepositoryPath(input) {
+    const universal = input.replaceAll("\\", "/");
+    if (!universal ||
+        (0,external_node_path_namespaceObject.isAbsolute)(universal) ||
+        external_node_path_namespaceObject.win32.isAbsolute(input) ||
+        universal.startsWith("//")) {
+        throw new Error(`Path must be a non-empty repository-relative path: ${input}`);
+    }
+    const parts = universal.split("/");
+    if (parts.some((part) => part === ".." || part === "" || part === ".")) {
+        throw new Error(`Unsafe relative path: ${input}`);
+    }
+    return parts.join("/");
+}
+function repositoryRoot(start) {
+    return realpathSync(start);
+}
+function fs_safe_safeResolve(root, candidate) {
+    const normalized = normalizeRepositoryPath(candidate);
+    const target = (0,external_node_path_namespaceObject.resolve)(root, ...normalized.split("/"));
+    const rel = (0,external_node_path_namespaceObject.relative)(root, target);
+    if (rel === "" ||
+        rel.startsWith(`..${external_node_path_namespaceObject.sep}`) ||
+        rel === ".." ||
+        (0,external_node_path_namespaceObject.isAbsolute)(rel)) {
+        throw new Error(`Path escapes repository root: ${candidate}`);
+    }
+    return target;
+}
+async function fs_safe_safeRead(root, candidate) {
+    const target = fs_safe_safeResolve(root, candidate);
+    const metadata = await stat(target);
+    if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
+        throw new Error(`Refusing to read unsupported or oversized file: ${candidate}`);
+    }
+    const resolvedTarget = realpathSync(target);
+    const rel = relative(root, resolvedTarget);
+    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+        throw new Error(`Symlink escapes repository root: ${candidate}`);
+    }
+    return readFile(resolvedTarget, "utf8");
+}
+async function fs_safe_walkRepository(root) {
+    const output = [];
+    async function walk(current) {
+        if (output.length >= MAX_FILES)
+            return;
+        const entries = await readdir(current, { withFileTypes: true });
+        for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+            if (output.length >= MAX_FILES)
+                return;
+            const full = resolve(current, entry.name);
+            const relativePath = relative(root, full).split(sep).join("/");
+            if (entry.isSymbolicLink())
+                continue;
+            if (entry.isDirectory()) {
+                if (!IGNORED_DIRECTORIES.has(entry.name))
+                    await walk(full);
+                continue;
+            }
+            if (!entry.isFile())
+                continue;
+            try {
+                if (lstatSync(full).size <= MAX_FILE_BYTES)
+                    output.push(relativePath);
+            }
+            catch {
+                // Concurrent workspace mutations are ignored; callers retain deterministic sorted output.
+            }
+        }
+    }
+    await walk(root);
+    return output.sort((a, b) => a.localeCompare(b));
+}
+
 ;// CONCATENATED MODULE: ./src/core/policy.ts
+
 
 
 
@@ -50377,6 +50259,23 @@ function manualProvenance() {
         confidence: "manual",
     };
 }
+function policyDigest(policy) {
+    const canonical = {
+        version: policy.version,
+        name: policy.name,
+        rules: [...policy.rules]
+            .map((rule) => ({
+            id: rule.id,
+            kind: rule.kind,
+            effect: rule.effect,
+            scope: rule.scope,
+            value: rule.value ?? null,
+            severity: rule.severity,
+        }))
+            .sort((left, right) => left.id.localeCompare(right.id)),
+    };
+    return (0,external_node_crypto_.createHash)("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
 const policyJsonSchema = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "GuardSpec policy",
@@ -50389,6 +50288,162 @@ const policyJsonSchema = {
         rules: { type: "array" },
     },
 };
+
+;// CONCATENATED MODULE: ./src/core/extract.ts
+const SENTENCE_SUFFIX = /[.!?,;:。！？、；：…]+$/u;
+const PATH_PREFIXES = [
+    {
+        // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
+        prefix: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*/i,
+        effect: "deny",
+        message: "Instruction forbids changes to this path.",
+    },
+    {
+        prefix: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*/i,
+        effect: "allow",
+        message: "Instruction limits changes to this path scope.",
+    },
+    {
+        prefix: /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*/i,
+        effect: "deny",
+        message: "Instruction marks this path as protected.",
+    },
+];
+function looksLikeGlob(token) {
+    if (/[*[{]/.test(token))
+        return true;
+    const withoutTrailingQuestion = token.replace(/[?？]+$/u, "");
+    return /[?？]/u.test(withoutTrailingQuestion);
+}
+/**
+ * Strip trailing sentence punctuation from an unquoted path token.
+ * Quoted tokens must be passed through unchanged — a literal `file.` or
+ * `hello!` is a valid filename and must not be rewritten.
+ */
+function normalizeUnquotedPathToken(raw) {
+    const stripped = raw.replace(SENTENCE_SUFFIX, "");
+    if (!stripped)
+        return raw;
+    const trailingQuestion = /[?？]$/u.test(raw);
+    if (looksLikeGlob(raw) && trailingQuestion && !looksLikeGlob(stripped)) {
+        return raw.replace(/[.!,;:。！、；：…]+$/u, "") || raw;
+    }
+    return stripped;
+}
+function extractPathToken(rest) {
+    const quoted = /^[`“"'「]([^`”"'」]+)[`”"'」]/.exec(rest);
+    if (quoted?.[1])
+        return quoted[1];
+    const unquoted = /^(\S+)/.exec(rest);
+    if (!unquoted?.[1])
+        return undefined;
+    return normalizeUnquotedPathToken(unquoted[1]);
+}
+const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
+    /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
+    /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
+]));
+function toId(adapter, kind, source, line) {
+    return `${adapter}-${kind}-${source
+        .replaceAll(/[^a-zA-Z0-9]+/g, "-")
+        .replaceAll(/^-|-$/g, "")
+        .toLowerCase()}-${line}`;
+}
+function scopeFor(path) {
+    const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
+    if (normalized.includes("*"))
+        return normalized;
+    if (normalized.endsWith("/"))
+        return `${normalized}**`;
+    if (normalized.includes("."))
+        return normalized;
+    return `${normalized}/**`;
+}
+function provenance(source, line, adapter, excerpt, confidence = "high") {
+    return { source, line, adapter, excerpt: excerpt.slice(0, 300), confidence };
+}
+function rule(adapter, kind, effect, source, line, scope, message, value, confidence = "high") {
+    return {
+        id: toId(adapter, kind, source, line),
+        kind,
+        effect,
+        scope,
+        ...(value === undefined ? {} : { value }),
+        severity: effect === "deny" ? "high" : effect === "require" ? "medium" : "low",
+        message,
+        provenance: [
+            provenance(source, line, adapter, `${kind}:${effect}:${scope}`, confidence),
+        ],
+    };
+}
+function extract_adapterForPath(path) {
+    if (path === "AGENTS.md" ||
+        path.endsWith("/AGENTS.md") ||
+        path.endsWith("/AGENTS.override.md"))
+        return "agents-md";
+    if (path === "CLAUDE.md" || path.startsWith(".claude/"))
+        return "claude";
+    if (path === ".github/copilot-instructions.md" ||
+        path.startsWith(".github/instructions/"))
+        return "copilot";
+    if (path.startsWith(".cursor/rules/") || path === ".cursorrules")
+        return "cursor";
+    if (path === "GEMINI.md" || path.startsWith(".gemini/"))
+        return "gemini";
+    if (path === "opencode.json")
+        return "opencode";
+    if (path === ".mcp.json")
+        return "mcp";
+    if (path === "CODEOWNERS" || path.endsWith("/CODEOWNERS"))
+        return "codeowners";
+    if (path === "CONTRIBUTING.md" ||
+        path === "SECURITY.md" ||
+        path === "README.md" ||
+        path.endsWith("/README.md"))
+        return "repository-doc";
+    return undefined;
+}
+function extract_extractTextRules(source, adapter, content) {
+    const rules = [];
+    for (const [index, text] of content.split(/\r?\n/).entries()) {
+        const line = index + 1;
+        for (const candidate of PATH_PREFIXES) {
+            const prefixMatch = candidate.prefix.exec(text);
+            if (!prefixMatch || prefixMatch.index === undefined)
+                continue;
+            const token = extractPathToken(text.slice(prefixMatch.index + prefixMatch[0].length));
+            if (token)
+                rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(token), candidate.message));
+        }
+        const commandMatch = text.match(COMMAND_PATTERNS[1]);
+        if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
+            rules.push(rule(adapter, "check", "require", source, line, "**", "Instruction requires this check.", commandMatch[1]));
+        }
+        const bareRun = text.match(/^\s*(?:[-*]\s+)?(?:run|execute|运行|执行):\s*`?([^`]+)`?\s*$/i);
+        if (bareRun?.[1])
+            rules.push(rule(adapter, "check", "require", source, line, "**", "Explicit listed check.", bareRun[1]));
+        if (/(?:must|required to|必须|需要)\s*(?:disclose|mention|披露|说明).*(?:ai|agent|assistance|AI|人工智能|助手)/i.test(text)) {
+            rules.push(rule(adapter, "disclosure", "require", source, line, "**", "Instruction requires AI assistance disclosure.", true));
+        }
+        const networkDeny = text.match(/(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要)\s*(?:use|access|call|reach|使用|访问).*(?:network|internet|external|网络|外网)/i);
+        if (networkDeny)
+            rules.push(rule(adapter, "network", "deny", source, line, "*", "Instruction forbids external network access."));
+    }
+    return rules;
+}
+function extract_extractCodeowners(source, content) {
+    return content.split(/\r?\n/).flatMap((text, index) => {
+        const trimmed = text.trim();
+        if (!trimmed || trimmed.startsWith("#"))
+            return [];
+        const [pattern, ...owners] = trimmed.split(/\s+/);
+        if (!pattern || owners.length === 0)
+            return [];
+        return [
+            rule("codeowners", "approval", "require", source, index + 1, scopeFor(pattern), "CODEOWNERS requires owner review for this scope.", owners),
+        ];
+    });
+}
 
 ;// CONCATENATED MODULE: ./src/core/scanner.ts
 
@@ -50523,7 +50578,12 @@ async function scanRepository(root) {
     };
 }
 
+;// CONCATENATED MODULE: ./src/core/types.ts
+const CHECK_SCHEMA_VERSION = "guardspec.check.v1";
+
 ;// CONCATENATED MODULE: ./src/core/evaluator.ts
+
+
 
 
 const EFFECT_PRIORITY = {
@@ -50639,12 +50699,28 @@ function evaluateTask(policy, request) {
     const conflicts = detectConflicts(policy.rules);
     const valid = conflicts.length === 0 &&
         decisions.every((decision) => decision.allowed || decision.status === "not-covered");
+    const hasConflict = conflicts.length > 0 ||
+        decisions.some((decision) => decision.status === "conflict");
+    const matched = new Set();
+    for (const decision of decisions)
+        for (const rule of decision.matchedRules)
+            matched.add(rule.id);
+    const protectedPaths = [
+        ...new Set(policy.rules
+            .filter((rule) => rule.kind === "path" && rule.effect === "deny")
+            .map((rule) => rule.scope)),
+    ].sort((left, right) => left.localeCompare(right));
     return {
         root: "",
         decisions,
         conflicts,
         valid,
         exitCode: conflicts.length > 0 ? 3 : valid ? 0 : 2,
+        schema_version: CHECK_SCHEMA_VERSION,
+        policy_digest: policyDigest(policy),
+        decision: hasConflict ? "conflict" : valid ? "allow" : "deny",
+        matched_rules: [...matched].sort((left, right) => left.localeCompare(right)),
+        protected_paths: protectedPaths,
     };
 }
 

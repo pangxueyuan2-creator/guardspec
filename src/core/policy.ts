@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
@@ -133,6 +134,24 @@ export function manualProvenance(): Provenance {
     excerpt: "Manually authored policy rule.",
     confidence: "manual",
   };
+}
+
+export function policyDigest(policy: Policy): string {
+  const canonical = {
+    version: policy.version,
+    name: policy.name,
+    rules: [...policy.rules]
+      .map((rule) => ({
+        id: rule.id,
+        kind: rule.kind,
+        effect: rule.effect,
+        scope: rule.scope,
+        value: rule.value ?? null,
+        severity: rule.severity,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  };
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
 export const policyJsonSchema = {

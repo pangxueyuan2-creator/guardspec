@@ -98,10 +98,17 @@ export interface TaskRequest {
   aiAssisted?: boolean;
 }
 
+export const CHECK_SCHEMA_VERSION = "guardspec.check.v1" as const;
+
 export interface CheckReport {
   root: string;
   decisions: Decision[];
   conflicts: Conflict[];
   valid: boolean;
   exitCode: number;
+  schema_version: typeof CHECK_SCHEMA_VERSION;
+  policy_digest: string;
+  decision: "allow" | "deny" | "conflict";
+  matched_rules: string[];
+  protected_paths: string[];
 }

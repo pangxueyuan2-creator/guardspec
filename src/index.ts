@@ -8,6 +8,7 @@ export { evaluate, evaluateTask } from "./core/evaluator.js";
 export {
   loadPolicy,
   parsePolicy,
+  policyDigest,
   stringifyPolicy,
   writePolicy,
 } from "./core/policy.js";

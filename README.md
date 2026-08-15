@@ -2,28 +2,33 @@
 
 Turns the rules people write in AGENTS.md, CLAUDE.md, Cursor rules, and similar files into something you can actually check before an agent runs.
 
-Most of those files are just prompts. GuardSpec compiles them into an explicit policy, then evaluates planned file changes against that policy.
+Most of those files are just prompt guidance. GuardSpec extracts the explicit path / command / network / MCP rules it can find, writes a reviewable policy, and lets you ask whether a given path or command is allowed.
 
-## What it does
-
-- Extracts protected paths, deny patterns, and allow rules from common agent instruction files
-- Produces a machine-readable policy with a stable digest
-- Checks a proposed change set (or live Git status) and returns allow / deny / conflict
-- Works as a CLI, a GitHub Action, and an MCP server
+It does not run models, execute commands, or act as a sandbox. It is only a local preflight tool.
 
 ## Install
 
+Node.js 20+ and pnpm are required.
+
 ```bash
-npm install -g guardspec
-# or
-pnpm add -g guardspec
+git clone https://github.com/pangxueyuan2-creator/guardspec.git
+cd guardspec
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+pnpm link --global
+
+guardspec doctor
 ```
 
 ## Quick start
 
 ```bash
+guardspec scan --root /path/to/repo
+guardspec init --root /path/to/repo          # writes .agent-policy.yml
 guardspec check --root /path/to/repo \
-  --planned-files src/auth/session.js
+  --path src/auth/session.ts \
+  --command "pnpm test"
 ```
 
 Exit codes:
@@ -32,35 +37,43 @@ Exit codes:
 - `2` denied
 - `3` conflict
 
-## Policy sources
+## What it does
 
-GuardSpec reads, in priority order:
+- Finds common instruction files and extracts explicit allow/deny rules
+- Surfaces conflicts instead of silently picking one side
+- Writes a human-readable `.agent-policy.yml` that includes source file + line provenance
+- Can expose the same policy via CLI, read-only MCP, or GitHub Action
 
-1. `AGENTS.md`
-2. `.github/instructions/*.instructions.md`
-3. `CLAUDE.md` / `.cursorrules` / similar known files
+## How it relates to the other two tools
 
-It does not invent rules. It only enforces what is already written.
+Different jobs, optional to use together:
 
-## Relationship to TaskToPR and PatchWitness
+- [TaskToPR](https://github.com/pangxueyuan2-creator/tasktopr) — turn one Issue into an isolated branch + real tests + optional PR, with evidence
+- [PatchWitness](https://github.com/pangxueyuan2-creator/patchwitness) — after a change exists, produce a Change Passport for scope, protected paths, and executed checks
 
-- **GuardSpec** decides whether a change is allowed by policy *before* it is applied.
-- **TaskToPR** turns an issue into a PR; it can consume GuardSpec decisions but is not a substitute for them.
-- **PatchWitness** verifies what actually landed in Git after the fact and issues a Change Passport.
+GuardSpec only answers the preflight question. It does not depend on the other two.
 
-They are complementary. GuardSpec is the preflight gate.
-
-## Development
+## Demo
 
 ```bash
-pnpm install
-pnpm format
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm action:build
+pnpm build
+bash demo/run-demo.sh
 ```
 
-## License
+## Commands
 
-MIT
+```text
+guardspec scan          discover rules and conflicts
+guardspec init          write a starter policy
+guardspec check         preflight a path/command/network/MCP
+guardspec explain       show why a rule fired
+guardspec doctor
+guardspec mcp
+```
+
+## Status
+
+Early public version. Single maintainer.  
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/security-model.md](docs/security-model.md) for the current boundaries and limitations.
+
+MIT.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
 import { loadPolicy, policyTemplate, writePolicy } from "./core/policy.js";
@@ -248,4 +249,5 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) void main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  void main();

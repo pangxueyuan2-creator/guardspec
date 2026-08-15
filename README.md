@@ -32,6 +32,7 @@ guardspec check --root /path/to/repo \
 ```
 
 Exit codes:
+
 - `0` allowed
 - `2` denied
 - `3` conflict

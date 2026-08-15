@@ -147,6 +147,35 @@ describe("extraction and path safety", () => {
     ).toBe(true);
     expect(rules.some((entry) => entry.kind === "disclosure")).toBe(true);
   });
+  it("extracts Chinese instruction patterns", () => {
+    const rules = extractTextRules(
+      "AGENTS.md",
+      "agents-md",
+      "只能修改 `src/auth/**`。\n禁止修改 `.github/workflows/**`。\n提交前必须运行 `npm test`。\n必须披露 AI 助手参与。",
+    );
+    expect(
+      rules.some(
+        (entry) =>
+          entry.kind === "path" &&
+          entry.effect === "allow" &&
+          entry.scope.includes("src/auth"),
+      ),
+    ).toBe(true);
+    expect(
+      rules.some(
+        (entry) =>
+          entry.kind === "path" &&
+          entry.effect === "deny" &&
+          entry.scope.includes(".github/workflows"),
+      ),
+    ).toBe(true);
+    expect(
+      rules.some(
+        (entry) => entry.kind === "check" && entry.value === "npm test",
+      ),
+    ).toBe(true);
+    expect(rules.some((entry) => entry.kind === "disclosure")).toBe(true);
+  });
   it("rejects traversal, absolute and Windows drive paths", () => {
     expect(() => normalizeRepositoryPath("../secret")).toThrow();
     expect(() => normalizeRepositoryPath("/etc/passwd")).toThrow();

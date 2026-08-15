@@ -15,6 +15,7 @@ All notable changes to GuardSpec are documented here.
 - Extracted required checks that are shell interpreters, unknown executables (`curl`, `wget`, versioned `python3.14`), or inline interpreter payloads (`python -c`, `cmd /c`, `bash -c`) are dropped instead of being forwarded to PatchWitness.
 - Sibling path rules on one instruction line now get unique, scope-qualified ids so generated YAML survives `parsePolicy` duplicate-id rejection.
 - Boundary provenance entries are de-duplicated by source/rule/reason.
+- GitHub Action changed-file discovery now uses `git diff -z` and `--no-renames`, so spaced/Unicode paths stay one entry and a `git mv` of a protected file still lists the source.
 
 ### Added
 

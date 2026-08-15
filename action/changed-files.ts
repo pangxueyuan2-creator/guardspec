@@ -37,16 +37,19 @@ export function resolveChangedFiles(
       .filter(Boolean);
 
   const base = eventBase(options.eventPath ?? process.env.GITHUB_EVENT_PATH);
+  // -z so spaces/Unicode/newlines stay one path. --no-renames so a
+  // protected source that was git-mv'd into an allowed directory still
+  // appears as its original path plus the destination.
   const diffArgs = base
-    ? ["diff", "--name-only", "--no-renames", base, "HEAD"]
-    : ["diff", "--name-only", "--no-renames", "HEAD^", "HEAD"];
+    ? ["diff", "--name-only", "-z", "--no-renames", base, "HEAD"]
+    : ["diff", "--name-only", "-z", "--no-renames", "HEAD^", "HEAD"];
   try {
     return execFileSync("git", diffArgs, {
       cwd: options.cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     })
-      .split(/\r?\n/)
+      .split("\0")
       .filter(Boolean);
   } catch {
     throw new Error(

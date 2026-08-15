@@ -62,4 +62,43 @@ describe("Action changed-file discovery", () => {
       "README.md",
     ]);
   });
+
+  it("keeps spaced and Unicode paths as single entries", async () => {
+    const root = await repository();
+    const base = git(root, "rev-parse", "HEAD");
+    await writeFile(join(root, "my file 安全.txt"), "payload\n", "utf8");
+    git(root, "add", "my file 安全.txt");
+    git(root, "commit", "-m", "unicode path");
+
+    const eventPath = join(root, "event.json");
+    await writeFile(
+      eventPath,
+      JSON.stringify({ pull_request: { base: { sha: base } } }),
+      "utf8",
+    );
+    expect(resolveChangedFiles("", { cwd: root, eventPath })).toEqual([
+      "my file 安全.txt",
+    ]);
+  });
+
+  it("lists both sides of a protected-path rename", async () => {
+    const root = await repository();
+    await mkdir(join(root, ".github", "workflows"), { recursive: true });
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(join(root, ".github", "workflows", "ci.yml"), "name: ci\n", "utf8");
+    git(root, "add", ".github/workflows/ci.yml");
+    git(root, "commit", "-m", "add workflow");
+    const base = git(root, "rev-parse", "HEAD");
+    git(root, "mv", ".github/workflows/ci.yml", "src/ci.yml");
+    git(root, "commit", "-m", "rename workflow into src");
+
+    const eventPath = join(root, "event.json");
+    await writeFile(
+      eventPath,
+      JSON.stringify({ pull_request: { base: { sha: base } } }),
+      "utf8",
+    );
+    const changed = resolveChangedFiles("", { cwd: root, eventPath }).sort();
+    expect(changed).toEqual([".github/workflows/ci.yml", "src/ci.yml"]);
+  });
 });

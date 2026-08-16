@@ -14,19 +14,19 @@ const PATH_PATTERNS: Array<{
   {
     // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
     expression:
-      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
     effect: "deny",
     message: "Instruction forbids changes to this path.",
   },
   {
     expression:
-      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
     effect: "allow",
     message: "Instruction limits changes to this path scope.",
   },
   {
     expression:
-      /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，。；」]+)/i,
+      /(?:protect|protected|保护|受保护)\s*(?:the\s+)?(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，。；」]+)/i,
     effect: "deny",
     message: "Instruction marks this path as protected.",
   },
@@ -61,7 +61,11 @@ function scopeFor(path: string): string {
   const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
   if (normalized.includes("*")) return normalized;
   if (normalized.endsWith("/")) return `${normalized}**`;
-  if (normalized.includes(".")) return normalized;
+  const lastSegment = normalized.split("/").pop() ?? normalized;
+  // A dot beyond the first character marks a file-like token ("app.py",
+  // "archive.tar.gz"); bare names and dot-directories (".github", "src")
+  // are directory scopes so their children stay governed.
+  if (lastSegment.includes(".", 1)) return normalized;
   return `${normalized}/**`;
 }
 
@@ -238,6 +242,7 @@ export function extractCodeowners(
     if (!trimmed || trimmed.startsWith("#")) return [];
     const [pattern, ...owners] = trimmed.split(/\s+/);
     if (!pattern || owners.length === 0) return [];
+    const anchored = pattern.startsWith("/") ? pattern.slice(1) : pattern;
     return [
       rule(
         "codeowners",
@@ -245,7 +250,7 @@ export function extractCodeowners(
         "require",
         source,
         index + 1,
-        scopeFor(pattern),
+        scopeFor(anchored),
         "CODEOWNERS requires owner review for this scope.",
         owners,
       ),

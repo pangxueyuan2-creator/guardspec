@@ -13,7 +13,7 @@ describe("unquoted path sentence punctuation", () => {
   const cases = [
     ["Never modify calculator.py.", "calculator.py"],
     ["Do not edit archive.tar.gz!", "archive.tar.gz"],
-    ["Must not touch .gitignore?", ".gitignore"],
+    ["Must not touch .gitignore?", ".gitignore/**"],
     ["Only modify src/core/**;", "src/core/**"],
     ["Protect path: config.yaml:", "config.yaml"],
     ["禁止修改 calculator.py。", "calculator.py"],

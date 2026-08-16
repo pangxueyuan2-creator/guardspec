@@ -60,12 +60,24 @@ describe("repository scanning", () => {
     const root = await copyFixture("conflict-repo");
     expect((await scanRepository(root)).conflicts).toHaveLength(1);
   });
-  it("does not follow symlink escapes", async () => {
+  it("does not follow symlink escapes", async (ctx) => {
     const root = await copyFixture("security-repo");
     const outside = await mkdtemp(join(tmpdir(), "guardspec-outside-"));
     temporary.push(outside);
     await writeFile(join(outside, "secret.txt"), "secret", "utf8");
-    await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    try {
+      await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (
+        process.platform === "win32" &&
+        (code === "EPERM" || code === "EACCES")
+      ) {
+        ctx.skip();
+        return;
+      }
+      throw error;
+    }
     await expect(safeRead(root, "escaped.txt")).rejects.toThrow();
   });
 });
@@ -119,7 +131,11 @@ describe("CLI behavior", () => {
     expect(existsSync(join(root, ".cursor/rules/guardspec.mdc"))).toBe(true);
     expect(output.join("")).toContain("Created .agent-policy.yml");
   });
-  it("runs the committed demo script against a real temporary Git tree", () => {
+  it("runs the committed demo script against a real temporary Git tree", (ctx) => {
+    if (process.platform === "win32") {
+      ctx.skip();
+      return;
+    }
     execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: "pipe" });
     const result = spawnSync("bash", ["demo/run-demo.sh"], {
       cwd: ROOT,

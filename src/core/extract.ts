@@ -14,19 +14,19 @@ const PATH_PATTERNS: Array<{
   {
     // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
     expression:
-      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
+      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
     effect: "deny",
     message: "Instruction forbids changes to this path.",
   },
   {
     expression:
-      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
+      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
     effect: "allow",
     message: "Instruction limits changes to this path scope.",
   },
   {
     expression:
-      /(?:protect|protected|保护|受保护)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)/i,
+      /(?:protect|protected|保护|受保护)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)/i,
     effect: "deny",
     message: "Instruction marks this path as protected.",
   },

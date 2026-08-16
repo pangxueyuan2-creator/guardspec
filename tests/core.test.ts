@@ -130,6 +130,20 @@ describe("deterministic evaluator", () => {
     expect(report.valid).toBe(false);
     expect(report.exitCode).toBe(2);
   });
+  it("treats not-covered as valid by default and invalid under strictUnknown", () => {
+    const empty: Policy = { version: 1, name: "empty", rules: [] };
+    const relaxed = evaluateTask(empty, { paths: ["src/anything.py"] });
+    expect(relaxed.valid).toBe(true);
+    expect(relaxed.exitCode).toBe(0);
+    const strict = evaluateTask(
+      empty,
+      { paths: ["src/anything.py"] },
+      { strictUnknown: true },
+    );
+    expect(strict.valid).toBe(false);
+    expect(strict.exitCode).toBe(2);
+    expect(strict.decisions[0]?.status).toBe("not-covered");
+  });
 });
 
 describe("extraction and path safety", () => {

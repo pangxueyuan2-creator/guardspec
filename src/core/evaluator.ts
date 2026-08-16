@@ -26,11 +26,21 @@ function specificity(scope: string): number {
 }
 
 function matches(rule: PolicyRule, target: string): boolean {
+  const normalized = normalizeTarget(target);
   if (rule.scope === "**" || rule.scope === "*") return true;
-  return picomatch.isMatch(normalizeTarget(target), rule.scope, {
-    dot: true,
-    nocase: false,
-  });
+  if (
+    picomatch.isMatch(normalized, rule.scope, {
+      dot: true,
+      nocase: false,
+      nonegate: true,
+    })
+  )
+    return true;
+  // "dir/**" covers the directory itself as well as its contents so a
+  // rule over a bare directory name cannot be evaded by naming the
+  // directory path directly.
+  if (rule.scope.endsWith("/**")) return normalized === rule.scope.slice(0, -3);
+  return false;
 }
 
 function ruleKindForAction(action: RuleKind): RuleKind[] {
@@ -130,6 +140,7 @@ export function evaluate(
 export function evaluateTask(
   policy: Policy,
   request: TaskRequest,
+  options: { strictUnknown?: boolean } = {},
 ): CheckReport {
   const decisions: Decision[] = [];
   for (const path of request.paths ?? [])
@@ -147,7 +158,9 @@ export function evaluateTask(
     conflicts.length === 0 &&
     decisions.every(
       (decision) => decision.allowed || decision.status === "not-covered",
-    );
+    ) &&
+    (!options.strictUnknown ||
+      decisions.every((decision) => decision.status !== "not-covered"));
   return {
     root: "",
     decisions,

@@ -19,7 +19,7 @@ const EXIT = {
 } as const;
 
 function usage(): string {
-  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
+  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
 }
 
 interface Args {
@@ -171,7 +171,8 @@ async function handle(args: Args): Promise<number> {
       mcpServers: flags(args, "mcp"),
       aiAssisted: flag(args, "ai-assisted") === "true",
     };
-    const report = evaluateTask(policy, request);
+    const strictUnknown = flag(args, "strict-unknown") === "true";
+    const report = evaluateTask(policy, request, { strictUnknown });
     report.root = root;
     if (json) writeOutput(report, true);
     else

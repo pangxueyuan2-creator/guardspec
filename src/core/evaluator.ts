@@ -29,15 +29,21 @@ function specificity(scope: string): number {
 }
 
 function matches(rule: PolicyRule, target: string): boolean {
+  const normalized = normalizeTarget(target);
   if (rule.scope === "**" || rule.scope === "*") return true;
-  return picomatch.isMatch(
-    normalizeTarget(target),
-    rule.scope.normalize("NFC"),
-    {
+  const scope = rule.scope.normalize("NFC");
+  if (
+    picomatch.isMatch(normalized, scope, {
       dot: true,
       nocase: false,
-    },
-  );
+      nonegate: true,
+    })
+  )
+    return true;
+  // A directory scope must govern the directory entry itself as well as its
+  // descendants. picomatch's `dir/**` does not match bare `dir`.
+  if (scope.endsWith("/**")) return normalized === scope.slice(0, -3);
+  return false;
 }
 
 function ruleKindForAction(action: RuleKind): RuleKind[] {

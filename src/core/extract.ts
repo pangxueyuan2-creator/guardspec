@@ -14,19 +14,19 @@ const PATH_PATTERNS: Array<{
   {
     // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
     expression:
-      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+      /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
     effect: "deny",
     message: "Instruction forbids changes to this path.",
   },
   {
     expression:
-      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+      /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
     effect: "allow",
     message: "Instruction limits changes to this path scope.",
   },
   {
     expression:
-      /(?:protect|protected|保护|受保护)\s*(?:the\s+)?(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，。；」]+)/i,
+      /(?:protect|protected|保护|受保护)\s*(?:(?:the\s+)?following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)/i,
     effect: "deny",
     message: "Instruction marks this path as protected.",
   },
@@ -38,6 +38,80 @@ function pathToken(match: RegExpMatchArray): string | undefined {
   const token = match[2];
   if (!token || match[1]) return token;
   return token.replace(SENTENCE_SUFFIX, "") || token;
+}
+
+// Separators that introduce a further path in a list: ", b", ", or c",
+// " or d", "、e", "和 f". Word boundaries keep "orchestrate" out.
+const LIST_SEPARATOR =
+  /^\s*(?:[,、]\s*(?:(?:and|or|nor)\s+)?|\b(?:and|or|nor)\b\s+|\s*(?:或(?:者)?|及|以及|和)\s*)\s*(?:the\s+)?/i;
+
+// When a list continuation names an obvious verb, the instruction is a
+// second clause ("... or run tests"), not another path. Quoted tokens are
+// always paths and skip the stopword check.
+const LIST_STOPWORDS = new Set([
+  "run",
+  "execute",
+  "test",
+  "build",
+  "deploy",
+  "commit",
+  "push",
+  "open",
+  "create",
+  "use",
+  "call",
+  "access",
+  "reach",
+  "install",
+  "publish",
+  "merge",
+  "rebase",
+  "delete",
+  "remove",
+  "modify",
+  "edit",
+  "change",
+  "touch",
+  "add",
+  "运行",
+  "执行",
+  "测试",
+  "构建",
+  "部署",
+  "提交",
+  "创建",
+  "使用",
+  "调用",
+  "访问",
+  "安装",
+  "发布",
+  "合并",
+  "删除",
+  "移除",
+  "修改",
+  "添加",
+]);
+
+function continuationPaths(text: string, offset: number): string[] {
+  const tokens: string[] = [];
+  let rest = text.slice(offset);
+  for (;;) {
+    const separator = rest.match(LIST_SEPARATOR);
+    if (!separator) break;
+    const after = rest.slice(separator[0].length);
+    const candidate = after.match(
+      /^([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/,
+    );
+    if (!candidate?.[2]) break;
+    const quoted = Boolean(candidate[1]);
+    const token = quoted
+      ? candidate[2]
+      : candidate[2].replace(SENTENCE_SUFFIX, "") || candidate[2];
+    if (!quoted && LIST_STOPWORDS.has(token.toLowerCase())) break;
+    tokens.push(token);
+    rest = after.slice(candidate[0].length);
+  }
+  return tokens;
 }
 
 const COMMAND_PATTERNS: readonly [RegExp, RegExp] = [
@@ -178,6 +252,24 @@ export function extractTextRules(
             candidate.message,
           ),
         );
+      if (match) {
+        for (const extra of continuationPaths(
+          text,
+          (match.index ?? 0) + match[0].length,
+        )) {
+          rules.push(
+            rule(
+              adapter,
+              "path",
+              candidate.effect,
+              source,
+              line,
+              scopeFor(extra),
+              candidate.message,
+            ),
+          );
+        }
+      }
     }
     const commandMatch = text.match(COMMAND_PATTERNS[1]);
     if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {

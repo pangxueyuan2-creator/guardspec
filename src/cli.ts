@@ -113,7 +113,12 @@ async function handle(args: Args): Promise<number> {
   const json = flag(args, "json") === "true";
   if (args.command === "scan") {
     const report = await scanRepository(root);
-    if (flag(args, "write") === "true")
+    if (flag(args, "write") === "true") {
+      const destination = resolve(root, ".agent-policy.yml");
+      if (existsSync(destination) && flag(args, "force") !== "true")
+        throw new Error(
+          ".agent-policy.yml already exists; use --force only after reviewing it.",
+        );
       await writePolicy(
         root,
         policyTemplate(report.policy.name, [
@@ -121,6 +126,7 @@ async function handle(args: Args): Promise<number> {
           ...report.policy.rules,
         ]),
       );
+    }
     if (json) writeOutput(report, true);
     else
       writeOutput(

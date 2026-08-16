@@ -1,5 +1,5 @@
 import { cp, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -119,6 +119,31 @@ describe("CLI behavior", () => {
     expect(existsSync(join(root, ".cursor/rules/guardspec.mdc"))).toBe(true);
     expect(output.join("")).toContain("Created .agent-policy.yml");
   });
+  it("scan --write refuses to overwrite an existing policy without --force", async () => {
+    const root = await copyFixture("python-repo");
+    const policyPath = join(root, ".agent-policy.yml");
+    await writeFile(
+      policyPath,
+      "# hand-reviewed policy\nversion: 1\nname: custom\nrules: []\n",
+      "utf8",
+    );
+
+    process.exitCode = undefined;
+    await main(["scan", "--root", root, "--write"]);
+    expect(process.exitCode).toBe(4);
+    expect(readFileSync(policyPath, "utf8")).toContain(
+      "# hand-reviewed policy",
+    );
+
+    process.exitCode = undefined;
+    await main(["scan", "--root", root, "--write", "--force"]);
+    expect(process.exitCode).toBe(0);
+    expect(readFileSync(policyPath, "utf8")).not.toContain(
+      "# hand-reviewed policy",
+    );
+    process.exitCode = undefined;
+  });
+
   it("runs the committed demo script against a real temporary Git tree", () => {
     execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: "pipe" });
     const result = spawnSync("bash", ["demo/run-demo.sh"], {

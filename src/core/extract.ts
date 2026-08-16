@@ -45,6 +45,16 @@ const COMMAND_PATTERNS: readonly [RegExp, RegExp] = [
   /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
 ];
 
+const DOT_DIRECTORIES = new Set([
+  ".claude",
+  ".cursor",
+  ".devcontainer",
+  ".gemini",
+  ".git",
+  ".github",
+  ".vscode",
+]);
+
 function toId(
   adapter: SourceAdapter,
   kind: RuleKind,
@@ -63,9 +73,13 @@ function scopeFor(path: string): string {
   if (normalized.endsWith("/")) return `${normalized}**`;
   const lastSegment = normalized.split("/").pop() ?? normalized;
   // A dot beyond the first character marks a file-like token (app.py,
-  // archive.tar.gz). Bare names and dot-directories (.github, src) are
-  // directory scopes so their descendants stay governed.
-  if (lastSegment.slice(1).includes(".")) return normalized;
+  // archive.tar.gz). Standalone dotfiles stay exact, while known repository
+  // control directories and bare directory names govern their descendants.
+  if (
+    lastSegment.slice(1).includes(".") ||
+    (lastSegment.startsWith(".") && !DOT_DIRECTORIES.has(lastSegment))
+  )
+    return normalized;
   return `${normalized}/**`;
 }
 

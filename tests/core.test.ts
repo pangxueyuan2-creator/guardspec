@@ -112,6 +112,56 @@ describe("deterministic evaluator", () => {
     expect(decision.status).toBe("approval-required");
     expect(decision.requiredChecks).toEqual(["node --test"]);
   });
+  it("treats NFC and NFD spellings of the same name as one protected path", () => {
+    // macOS filesystem APIs report NFD spellings; a policy written by a human
+    // in NFC must still deny the NFD spelling of the same file name.
+    const unicodePolicy: Policy = {
+      version: 1,
+      name: "unicode",
+      rules: [
+        rule("deny-cafe", "deny", "src/café.ts"),
+        rule("allow-all", "allow", "**"),
+      ],
+    };
+    expect(evaluate(unicodePolicy, "path", "src/café.ts").status).toBe(
+      "denied",
+    );
+    expect(evaluate(unicodePolicy, "path", "src/cafe\u0301.ts").status).toBe(
+      "denied",
+    );
+  });
+
+  it("normalizes NFD-written policy scopes to match NFC spellings too", () => {
+    const nfdPolicy: Policy = {
+      version: 1,
+      name: "nfd",
+      rules: [
+        rule("deny-nfd", "deny", "src/cafe\u0301.ts"),
+        rule("allow-all", "allow", "**"),
+      ],
+    };
+    expect(evaluate(nfdPolicy, "path", "src/café.ts").status).toBe("denied");
+    expect(evaluate(nfdPolicy, "path", "src/cafe\u0301.ts").status).toBe(
+      "denied",
+    );
+  });
+
+  it("reports allow/deny conflicts between NFC and NFD spellings of one scope", () => {
+    // Visually identical scopes are the same protected entity after NFC
+    // normalization; an allow/deny pair across spellings must surface as a
+    // conflict instead of silently resolving through effect precedence.
+    const conflicted = {
+      ...policy,
+      rules: [
+        rule("allow-cafe-nfc", "allow", "src/café.ts"),
+        rule("deny-cafe-nfd", "deny", "src/cafe\u0301.ts"),
+        rule("allow-all", "allow", "**"),
+      ],
+    };
+    expect(evaluate(conflicted, "path", "src/café.ts").status).toBe("conflict");
+    expect(detectConflicts(conflicted.rules)).toHaveLength(1);
+  });
+
   it("reports equal-scope allow deny conflicts", () => {
     const conflicted = {
       ...policy,

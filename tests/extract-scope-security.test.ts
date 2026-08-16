@@ -3,54 +3,51 @@ import { evaluate } from "../src/core/evaluator.js";
 import { extractCodeowners, extractTextRules } from "../src/core/extract.js";
 import { policyTemplate } from "../src/core/policy.js";
 
-function policyFor(text: string) {
+function policyFor(lines: string) {
   return policyTemplate(
     "scope",
-    extractTextRules("AGENTS.md", "agents-md", text),
+    extractTextRules("AGENTS.md", "agents-md", lines),
   );
 }
 
-describe("extracted directory scopes", () => {
-  it("protects a dotted directory mentioned with an article", () => {
+describe("directory tokens govern their children", () => {
+  it("protects a dotted directory mentioned with 'the' and a noun", () => {
     const policy = policyFor("Protect the .github/workflows directory.");
     expect(evaluate(policy, "path", ".github/workflows/ci.yml").status).toBe(
       "denied",
     );
   });
 
-  it("denies children of dotted and undotted directory paths", () => {
-    expect(
-      evaluate(
-        policyFor("Do not modify .github/actions."),
-        "path",
-        ".github/actions/release.sh",
-      ).status,
-    ).toBe("denied");
-    expect(
-      evaluate(
-        policyFor("Do not modify src/security."),
-        "path",
-        "src/security/util.ts",
-      ).status,
-    ).toBe("denied");
+  it("denies children of a dotted directory path", () => {
+    const policy = policyFor("Do not modify .github/actions.");
+    expect(evaluate(policy, "path", ".github/actions/release.sh").status).toBe(
+      "denied",
+    );
   });
 
-  it("keeps file-like tokens from overmatching sibling names", () => {
+  it("denies children of an undotted directory path", () => {
+    const policy = policyFor("Do not modify src/security.");
+    expect(evaluate(policy, "path", "src/security/util.py").status).toBe(
+      "denied",
+    );
+  });
+
+  it("covers the bare directory entry", () => {
+    const policy = policyFor("Do not modify src/security");
+    expect(evaluate(policy, "path", "src/security").status).toBe("denied");
+  });
+
+  it("keeps file-like tokens exact", () => {
     const policy = policyFor("Never modify calculator.py.");
     expect(evaluate(policy, "path", "calculator.py").status).toBe("denied");
     expect(evaluate(policy, "path", "calculator.py.bak").status).toBe(
       "not-covered",
     );
   });
-
-  it("covers the bare directory entry as well as its descendants", () => {
-    const policy = policyFor("Do not modify src/security");
-    expect(evaluate(policy, "path", "src/security").status).toBe("denied");
-  });
 });
 
-describe("CODEOWNERS root anchors", () => {
-  it("requires approval for root-anchored directory children", () => {
+describe("CODEOWNERS root-anchored patterns", () => {
+  it("requires approval for children of /docs/", () => {
     const policy = policyTemplate(
       "co",
       extractCodeowners("CODEOWNERS", "/docs/ @docs"),
@@ -58,10 +55,9 @@ describe("CODEOWNERS root anchors", () => {
     expect(evaluate(policy, "path", "docs/readme.md").status).toBe(
       "approval-required",
     );
-    expect(evaluate(policy, "path", "src/app.ts").status).toBe("not-covered");
   });
 
-  it("requires approval for a root-anchored file", () => {
+  it("requires approval for /README.md", () => {
     const policy = policyTemplate(
       "co",
       extractCodeowners("CODEOWNERS", "/README.md @docs"),
@@ -70,10 +66,18 @@ describe("CODEOWNERS root anchors", () => {
       "approval-required",
     );
   });
+
+  it("does not over-require for paths outside the anchored directory", () => {
+    const policy = policyTemplate(
+      "co",
+      extractCodeowners("CODEOWNERS", "/docs/ @docs"),
+    );
+    expect(evaluate(policy, "path", "src/app.ts").status).toBe("not-covered");
+  });
 });
 
-describe("leading bang scopes", () => {
-  it("treats leading bang literally instead of negating the security rule", () => {
+describe("glob negation in extracted scopes", () => {
+  it("treats a leading-bang token literally instead of inverting the rule", () => {
     const policy = policyFor("Do not modify !important.md");
     expect(evaluate(policy, "path", "other.py").status).toBe("not-covered");
     expect(evaluate(policy, "path", "important.md").status).toBe(

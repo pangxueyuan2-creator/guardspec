@@ -40,7 +40,9 @@ function isCandidate(path: string): boolean {
 }
 
 function conflictKey(rule: PolicyRule): string {
-  return `${rule.kind}:${rule.scope}`;
+  // Normalize to NFC so visually identical spellings of one scope are grouped
+  // together — the evaluator matches on the same normalized form.
+  return `${rule.kind}:${rule.scope.normalize("NFC")}`;
 }
 
 export function detectConflicts(rules: PolicyRule[]): Conflict[] {

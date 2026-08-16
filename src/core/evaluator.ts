@@ -18,19 +18,26 @@ const EFFECT_PRIORITY: Record<PolicyRule["effect"], number> = {
 };
 
 function normalizeTarget(target: string): string {
-  return target.replaceAll("\\", "/").replace(/^\.\//, "");
+  // NFC unifies visually identical spellings: macOS reports NFD file names, so
+  // a policy written in NFC (the human default) must still cover the NFD form
+  // of the same file. Normalizing both sides keeps matching glyph-based.
+  return target.replaceAll("\\", "/").replace(/^\.\//, "").normalize("NFC");
 }
 
 function specificity(scope: string): number {
-  return scope.replaceAll(/[*!?{}[\]]/g, "").length;
+  return scope.normalize("NFC").replaceAll(/[*!?{}[\]]/g, "").length;
 }
 
 function matches(rule: PolicyRule, target: string): boolean {
   if (rule.scope === "**" || rule.scope === "*") return true;
-  return picomatch.isMatch(normalizeTarget(target), rule.scope, {
-    dot: true,
-    nocase: false,
-  });
+  return picomatch.isMatch(
+    normalizeTarget(target),
+    rule.scope.normalize("NFC"),
+    {
+      dot: true,
+      nocase: false,
+    },
+  );
 }
 
 function ruleKindForAction(action: RuleKind): RuleKind[] {

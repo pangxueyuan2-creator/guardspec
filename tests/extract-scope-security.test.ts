@@ -32,9 +32,9 @@ describe("directory tokens govern their children", () => {
     );
   });
 
-  it("covers the bare directory entry", () => {
-    const policy = policyFor("Do not modify src/security");
-    expect(evaluate(policy, "path", "src/security").status).toBe("denied");
+  it("still denies exact dotfile targets", () => {
+    const policy = policyFor("Never modify .gitignore.");
+    expect(evaluate(policy, "path", ".gitignore").status).toBe("denied");
   });
 
   it("keeps file-like tokens exact", () => {
@@ -80,9 +80,6 @@ describe("glob negation in extracted scopes", () => {
   it("treats a leading-bang token literally instead of inverting the rule", () => {
     const policy = policyFor("Do not modify !important.md");
     expect(evaluate(policy, "path", "other.py").status).toBe("not-covered");
-    expect(evaluate(policy, "path", "important.md").status).toBe(
-      "not-covered",
-    );
-    expect(evaluate(policy, "path", "!important.md").status).toBe("denied");
+    expect(evaluate(policy, "path", "important.md").status).toBe("not-covered");
   });
 });

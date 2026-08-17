@@ -113,8 +113,6 @@ describe("deterministic evaluator", () => {
     expect(decision.requiredChecks).toEqual(["node --test"]);
   });
   it("treats NFC and NFD spellings of the same name as one protected path", () => {
-    // macOS filesystem APIs report NFD spellings; a policy written by a human
-    // in NFC must still deny the NFD spelling of the same file name.
     const unicodePolicy: Policy = {
       version: 1,
       name: "unicode",
@@ -147,9 +145,6 @@ describe("deterministic evaluator", () => {
   });
 
   it("reports allow/deny conflicts between NFC and NFD spellings of one scope", () => {
-    // Visually identical scopes are the same protected entity after NFC
-    // normalization; an allow/deny pair across spellings must surface as a
-    // conflict instead of silently resolving through effect precedence.
     const conflicted = {
       ...policy,
       rules: [
@@ -179,6 +174,22 @@ describe("deterministic evaluator", () => {
     });
     expect(report.valid).toBe(false);
     expect(report.exitCode).toBe(2);
+  });
+  it("keeps uncovered targets advisory by default but blocks them in strict mode", () => {
+    const empty: Policy = { version: 1, name: "empty", rules: [] };
+    const relaxed = evaluateTask(empty, { paths: ["src/anything.py"] });
+    expect(relaxed.valid).toBe(true);
+    expect(relaxed.exitCode).toBe(0);
+    expect(relaxed.decisions[0]?.status).toBe("not-covered");
+
+    const strict = evaluateTask(
+      empty,
+      { paths: ["src/anything.py"] },
+      { strictUnknown: true },
+    );
+    expect(strict.valid).toBe(false);
+    expect(strict.exitCode).toBe(2);
+    expect(strict.decisions[0]?.status).toBe("not-covered");
   });
 });
 

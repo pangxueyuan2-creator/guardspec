@@ -148,6 +148,7 @@ export function evaluate(
 export function evaluateTask(
   policy: Policy,
   request: TaskRequest,
+  options: { strictUnknown?: boolean } = {},
 ): CheckReport {
   const decisions: Decision[] = [];
   for (const path of request.paths ?? [])
@@ -165,7 +166,9 @@ export function evaluateTask(
     conflicts.length === 0 &&
     decisions.every(
       (decision) => decision.allowed || decision.status === "not-covered",
-    );
+    ) &&
+    (!options.strictUnknown ||
+      decisions.every((decision) => decision.status !== "not-covered"));
   return {
     root: "",
     decisions,

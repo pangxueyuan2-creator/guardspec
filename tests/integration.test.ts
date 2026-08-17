@@ -144,7 +144,11 @@ describe("CLI behavior", () => {
     process.exitCode = undefined;
   });
 
-  it("runs the committed demo script against a real temporary Git tree", () => {
+  it("runs the committed demo script against a real temporary Git tree", (ctx) => {
+    if (process.platform === "win32") {
+      ctx.skip();
+      return;
+    }
     execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: "pipe" });
     const result = spawnSync("bash", ["demo/run-demo.sh"], {
       cwd: ROOT,

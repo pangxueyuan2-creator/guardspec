@@ -81,21 +81,30 @@ export async function runMcpServer(
         networkDomains: z.array(z.string()).optional(),
         mcpServers: z.array(z.string()).optional(),
         aiAssisted: z.boolean().optional(),
+        strictUnknown: z.boolean().optional(),
       },
     },
     async (request) =>
       response(
-        evaluateTask(policy, {
-          ...(request.paths ? { paths: request.paths } : {}),
-          ...(request.commands ? { commands: request.commands } : {}),
-          ...(request.networkDomains
-            ? { networkDomains: request.networkDomains }
-            : {}),
-          ...(request.mcpServers ? { mcpServers: request.mcpServers } : {}),
-          ...(request.aiAssisted === undefined
-            ? {}
-            : { aiAssisted: request.aiAssisted }),
-        }),
+        evaluateTask(
+          policy,
+          {
+            ...(request.paths ? { paths: request.paths } : {}),
+            ...(request.commands ? { commands: request.commands } : {}),
+            ...(request.networkDomains
+              ? { networkDomains: request.networkDomains }
+              : {}),
+            ...(request.mcpServers ? { mcpServers: request.mcpServers } : {}),
+            ...(request.aiAssisted === undefined
+              ? {}
+              : { aiAssisted: request.aiAssisted }),
+          },
+          {
+            ...(request.strictUnknown === undefined
+              ? {}
+              : { strictUnknown: request.strictUnknown }),
+          },
+        ),
       ),
   );
   await server.connect(new StdioServerTransport());

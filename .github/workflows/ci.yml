@@ -33,6 +33,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm action:build
+      - name: Upload rebuilt action bundle for stale-bundle repair
+        if: matrix.node == 20
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rebuilt-action-dist
+          path: action/dist
+          if-no-files-found: error
       - name: Verify committed action bundle is current
         run: git diff --exit-code -- action/dist
       - run: pnpm pack:check

@@ -42423,17 +42423,17 @@ async function fs_safe_walkRepository(root) {
 const PATH_PATTERNS = [
     {
         // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
-        expression: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+        expression: /(?:do not|don't|never|forbid(?:den)?|must not|禁止|不要|切勿|不得)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
         effect: "deny",
         message: "Instruction forbids changes to this path.",
     },
     {
-        expression: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*([`“"'「])?([^`”"'\s,，。；」]+)[`”"'」]?/i,
+        expression: /(?:only|may only|只能|仅能|只允许)\s*(?:modify|edit|change|touch|修改|改动|编辑)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/i,
         effect: "allow",
         message: "Instruction limits changes to this path scope.",
     },
     {
-        expression: /(?:protect|protected|保护|受保护)\s*(?:path|area|directory|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，。；」]+)/i,
+        expression: /(?:protect|protected|保护|受保护)\s*(?:the\s+)?(?:following\s+|以下\s*)?(?:paths|path|areas|area|directories|directory|files|file|路径|目录|文件)?\s*[:=-]?\s*([`“"'「])?([^`”"'\s,，、。；」]+)/i,
         effect: "deny",
         message: "Instruction marks this path as protected.",
     },
@@ -42445,10 +42445,90 @@ function pathToken(match) {
         return token;
     return token.replace(SENTENCE_SUFFIX, "") || token;
 }
+// Separators that introduce a further path in a list: ", b", ", or c",
+// " or d", "、e", "和 f". Word boundaries keep "orchestrate" out.
+const LIST_SEPARATOR = /^\s*(?:[,、]\s*(?:(?:and|or|nor)\s+)?|\b(?:and|or|nor)\b\s+|\s*(?:或(?:者)?|及|以及|和)\s*)\s*(?:the\s+)?/i;
+// When a list continuation names an obvious verb, the instruction is a
+// second clause ("... or run tests"), not another path. Quoted tokens are
+// always paths and skip the stopword check.
+const LIST_STOPWORDS = new Set([
+    "run",
+    "execute",
+    "test",
+    "build",
+    "deploy",
+    "commit",
+    "push",
+    "open",
+    "create",
+    "use",
+    "call",
+    "access",
+    "reach",
+    "install",
+    "publish",
+    "merge",
+    "rebase",
+    "delete",
+    "remove",
+    "modify",
+    "edit",
+    "change",
+    "touch",
+    "add",
+    "运行",
+    "执行",
+    "测试",
+    "构建",
+    "部署",
+    "提交",
+    "创建",
+    "使用",
+    "调用",
+    "访问",
+    "安装",
+    "发布",
+    "合并",
+    "删除",
+    "移除",
+    "修改",
+    "添加",
+]);
+function continuationPaths(text, offset) {
+    const tokens = [];
+    let rest = text.slice(offset);
+    for (;;) {
+        const separator = rest.match(LIST_SEPARATOR);
+        if (!separator)
+            break;
+        const after = rest.slice(separator[0].length);
+        const candidate = after.match(/^([`“"'「])?([^`”"'\s,，、。；」]+)[`”"'」]?/);
+        if (!candidate?.[2])
+            break;
+        const quoted = Boolean(candidate[1]);
+        const token = quoted
+            ? candidate[2]
+            : candidate[2].replace(SENTENCE_SUFFIX, "") || candidate[2];
+        if (!quoted && LIST_STOPWORDS.has(token.toLowerCase()))
+            break;
+        tokens.push(token);
+        rest = after.slice(candidate[0].length);
+    }
+    return tokens;
+}
 const COMMAND_PATTERNS = (/* unused pure expression or super */ null && ([
     /(?:must|always|required to|before (?:committing|submitting|opening)|必须|需要|提交前|合并前)/i,
     /(?:run|execute|运行|执行)\s*[`“"']([^`”"']+)[`”"']/i,
 ]));
+const DOT_DIRECTORIES = new Set([
+    ".claude",
+    ".cursor",
+    ".devcontainer",
+    ".gemini",
+    ".git",
+    ".github",
+    ".vscode",
+]);
 function toId(adapter, kind, source, line) {
     return `${adapter}-${kind}-${source
         .replaceAll(/[^a-zA-Z0-9]+/g, "-")
@@ -42461,7 +42541,12 @@ function scopeFor(path) {
         return normalized;
     if (normalized.endsWith("/"))
         return `${normalized}**`;
-    if (normalized.includes("."))
+    const lastSegment = normalized.split("/").pop() ?? normalized;
+    // A dot beyond the first character marks a file-like token (app.py,
+    // archive.tar.gz). Standalone dotfiles stay exact, while known repository
+    // control directories and bare directory names govern their descendants.
+    if (lastSegment.slice(1).includes(".") ||
+        (lastSegment.startsWith(".") && !DOT_DIRECTORIES.has(lastSegment)))
         return normalized;
     return `${normalized}/**`;
 }
@@ -42518,6 +42603,11 @@ function extract_extractTextRules(source, adapter, content) {
             const token = match ? pathToken(match) : undefined;
             if (token)
                 rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(token), candidate.message));
+            if (match) {
+                for (const extra of continuationPaths(text, (match.index ?? 0) + match[0].length)) {
+                    rules.push(rule(adapter, "path", candidate.effect, source, line, scopeFor(extra), candidate.message));
+                }
+            }
         }
         const commandMatch = text.match(COMMAND_PATTERNS[1]);
         if (commandMatch?.[1] && COMMAND_PATTERNS[0].test(text)) {
@@ -42543,8 +42633,9 @@ function extract_extractCodeowners(source, content) {
         const [pattern, ...owners] = trimmed.split(/\s+/);
         if (!pattern || owners.length === 0)
             return [];
+        const anchored = pattern.startsWith("/") ? pattern.slice(1) : pattern;
         return [
-            rule("codeowners", "approval", "require", source, index + 1, scopeFor(pattern), "CODEOWNERS requires owner review for this scope.", owners),
+            rule("codeowners", "approval", "require", source, index + 1, scopeFor(anchored), "CODEOWNERS requires owner review for this scope.", owners),
         ];
     });
 }
@@ -50424,7 +50515,9 @@ function isCandidate(path) {
         path.startsWith(".cursor/rules/"));
 }
 function conflictKey(rule) {
-    return `${rule.kind}:${rule.scope}`;
+    // Normalize to NFC so visually identical spellings of one scope are grouped
+    // together — the evaluator matches on the same normalized form.
+    return `${rule.kind}:${rule.scope.normalize("NFC")}`;
 }
 function detectConflicts(rules) {
     const grouped = new Map();
@@ -50540,18 +50633,30 @@ const EFFECT_PRIORITY = {
     warn: 1,
 };
 function normalizeTarget(target) {
-    return target.replaceAll("\\", "/").replace(/^\.\//, "");
+    // NFC unifies visually identical spellings: macOS reports NFD file names, so
+    // a policy written in NFC (the human default) must still cover the NFD form
+    // of the same file. Normalizing both sides keeps matching glyph-based.
+    return target.replaceAll("\\", "/").replace(/^\.\//, "").normalize("NFC");
 }
 function specificity(scope) {
-    return scope.replaceAll(/[*!?{}[\]]/g, "").length;
+    return scope.normalize("NFC").replaceAll(/[*!?{}[\]]/g, "").length;
 }
 function matches(rule, target) {
+    const normalized = normalizeTarget(target);
     if (rule.scope === "**" || rule.scope === "*")
         return true;
-    return picomatch_default().isMatch(normalizeTarget(target), rule.scope, {
+    const scope = rule.scope.normalize("NFC");
+    if (picomatch_default().isMatch(normalized, scope, {
         dot: true,
         nocase: false,
-    });
+        nonegate: true,
+    }))
+        return true;
+    // A directory scope must govern the directory entry itself as well as its
+    // descendants. picomatch's `dir/**` does not match bare `dir`.
+    if (scope.endsWith("/**"))
+        return normalized === scope.slice(0, -3);
+    return false;
 }
 function ruleKindForAction(action) {
     if (action === "command")
@@ -50582,7 +50687,9 @@ function evaluate(policy, action, target) {
     const hasAllow = applicable.some((rule) => rule.effect === "allow");
     const hasDeny = applicable.some((rule) => rule.effect === "deny");
     const requiredChecks = policy.rules
-        .filter((rule) => rule.kind === "check" && rule.effect === "require")
+        .filter((rule) => rule.kind === "check" &&
+        rule.effect === "require" &&
+        matches(rule, target))
         .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : []));
     const approvalRequired = policy.rules.some((rule) => rule.kind === "approval" &&
         rule.effect === "require" &&
@@ -50631,7 +50738,7 @@ function evaluate(policy, action, target) {
         approvalRequired,
     };
 }
-function evaluateTask(policy, request) {
+function evaluateTask(policy, request, options = {}) {
     const decisions = [];
     for (const path of request.paths ?? [])
         decisions.push(evaluate(policy, "path", path));
@@ -50645,7 +50752,9 @@ function evaluateTask(policy, request) {
         decisions.push(evaluate(policy, "disclosure", "ai-assisted-change"));
     const conflicts = detectConflicts(policy.rules);
     const valid = conflicts.length === 0 &&
-        decisions.every((decision) => decision.allowed || decision.status === "not-covered");
+        decisions.every((decision) => decision.allowed || decision.status === "not-covered") &&
+        (!options.strictUnknown ||
+            decisions.every((decision) => decision.status !== "not-covered"));
     return {
         root: "",
         decisions,

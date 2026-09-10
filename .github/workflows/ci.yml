@@ -33,6 +33,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm action:build
+      - name: Verify committed action bundle is current
+        run: git diff --exit-code -- action/dist
       - run: pnpm pack:check
 
   windows:
@@ -56,4 +58,6 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm action:build
+      - name: Verify committed action bundle is current
+        run: git diff --exit-code -- action/dist
       - run: pnpm pack:check

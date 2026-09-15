@@ -45,10 +45,21 @@ interface PackageManifest {
   scripts?: Record<string, unknown>;
 }
 
+interface LocatedPackageManifest {
+  manifest: PackageManifest;
+  directory: string;
+}
+
+interface PackageScriptReference {
+  scriptName: string;
+  allowServerFallback: boolean;
+}
+
 const localMarkdownLinks = /\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)/g;
 const inlineCode = /`([^`\n]+)`/g;
 const explicitPackageRun =
   /^(?:npm|pnpm|yarn|bun)\s+run\s+([a-zA-Z0-9:_-]+)(?:\s|$)/;
+const npmLifecycleShorthand = /^npm\s+(test|start)(?:\s|$)/;
 const uriScheme = /^[a-z][a-z0-9+.-]*:/i;
 const INSTRUCTION_ADAPTERS = new Set<SourceAdapter>([
   "agents-md",
@@ -239,7 +250,7 @@ async function nearestPackageManifest(
   root: string,
   sourcePath: string,
   repositoryFiles: ReadonlySet<string>,
-): Promise<PackageManifest | undefined> {
+): Promise<LocatedPackageManifest | undefined> {
   let current = posix.dirname(sourcePath);
   while (true) {
     const candidate =
@@ -248,7 +259,10 @@ async function nearestPackageManifest(
       try {
         const parsed: unknown = JSON.parse(await safeRead(root, candidate));
         if (parsed && typeof parsed === "object") {
-          return parsed;
+          return {
+            manifest: parsed,
+            directory: current,
+          };
         }
         return undefined;
       } catch {
@@ -260,29 +274,59 @@ async function nearestPackageManifest(
   }
 }
 
+function packageScriptReference(value: string): PackageScriptReference | undefined {
+  const explicit = explicitPackageRun.exec(value)?.[1];
+  if (explicit) {
+    return { scriptName: explicit, allowServerFallback: false };
+  }
+
+  const shorthand = npmLifecycleShorthand.exec(value)?.[1];
+  if (!shorthand) return undefined;
+  return {
+    scriptName: shorthand,
+    allowServerFallback: shorthand === "start",
+  };
+}
+
+function hasNpmStartServerFallback(
+  directory: string,
+  repositoryFiles: ReadonlySet<string>,
+): boolean {
+  const server = directory === "." ? "server.js" : `${directory}/server.js`;
+  return repositoryFiles.has(server);
+}
+
 async function pushPackageScriptFindings(
   root: string,
   file: LoadedInstruction,
   repositoryFiles: ReadonlySet<string>,
   findings: InstructionFinding[],
 ): Promise<void> {
-  const manifest = await nearestPackageManifest(
+  const located = await nearestPackageManifest(
     root,
     file.source.path,
     repositoryFiles,
   );
-  if (!manifest?.scripts || typeof manifest.scripts !== "object") return;
+  if (!located?.manifest.scripts || typeof located.manifest.scripts !== "object") {
+    return;
+  }
 
   for (const match of file.content.matchAll(inlineCode)) {
     const value = match[1]?.trim();
     if (!value) continue;
-    const command = explicitPackageRun.exec(value);
-    const scriptName = command?.[1];
-    if (!scriptName || Object.hasOwn(manifest.scripts, scriptName)) continue;
+    const reference = packageScriptReference(value);
+    if (!reference) continue;
+    if (Object.hasOwn(located.manifest.scripts, reference.scriptName)) continue;
+    if (
+      reference.allowServerFallback &&
+      hasNpmStartServerFallback(located.directory, repositoryFiles)
+    ) {
+      continue;
+    }
     findings.push({
       code: "MISSING_PACKAGE_SCRIPT",
       severity: "error",
-      message: `Referenced package script is not declared: ${scriptName}`,
+      message: `Referenced package script is not declared: ${reference.scriptName}`,
       file: file.source.path,
       detail: `Command: ${value}`,
     });

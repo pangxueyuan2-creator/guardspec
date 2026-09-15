@@ -36,11 +36,7 @@ describe("RuleRelay compatibility", () => {
   it("proves legacy discovery while reporting GuardSpec-only expanded coverage", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Protect `src/core`.\n");
-    await writeRepoFile(
-      root,
-      "packages/api/CLAUDE.md",
-      "Keep API edits focused.\n",
-    );
+    await writeRepoFile(root, "CLAUDE.md", "Keep API edits focused.\n");
     await writeRepoFile(root, "GEMINI.md", "Use repository-local context.\n");
     await writeRepoFile(
       root,
@@ -84,8 +80,8 @@ describe("RuleRelay compatibility", () => {
       ".github/copilot-instructions.md",
       ".github/instructions/typescript.instructions.md",
       "AGENTS.md",
+      "CLAUDE.md",
       "GEMINI.md",
-      "packages/api/CLAUDE.md",
     ]);
     expect(report.matchedSources).toHaveLength(report.expectedSources.length);
     expect(report.expandedSources.map((source) => source.path)).toEqual([
@@ -93,6 +89,28 @@ describe("RuleRelay compatibility", () => {
       "opencode.json",
     ]);
     expect(report.replacementCommands.strictCheck).toContain("--strict");
+  });
+
+  it("fails closed when RuleRelay discovers a nested legacy source GuardSpec does not yet classify", async () => {
+    const root = await repository();
+    await writeRepoFile(
+      root,
+      "packages/api/CLAUDE.md",
+      "Keep API edits focused.\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root);
+
+    expect(report.ready).toBe(false);
+    expect(report.expectedSources).toEqual([
+      { path: "packages/api/CLAUDE.md", adapter: "claude" },
+    ]);
+    expect(report.blockers).toEqual([
+      expect.objectContaining({
+        code: "MISSING_RULE_RELAY_SOURCE",
+        file: "packages/api/CLAUDE.md",
+      }),
+    ]);
   });
 
   it("fails closed when GuardSpec misses a case-insensitive legacy source", async () => {

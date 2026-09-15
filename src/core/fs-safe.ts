@@ -16,11 +16,7 @@ export const MAX_FILE_BYTES = 512_000;
 export const MAX_FILES = 2_000;
 export const MAX_SYMLINK_DIAGNOSTICS = 100;
 
-export type RepositorySymlinkKind =
-  | "file"
-  | "directory"
-  | "other"
-  | "unknown";
+export type RepositorySymlinkKind = "file" | "directory" | "other" | "unknown";
 
 export interface RepositorySymlink {
   path: string;

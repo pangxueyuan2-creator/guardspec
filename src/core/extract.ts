@@ -5,6 +5,10 @@ import type {
   RuleKind,
   SourceAdapter,
 } from "./types.js";
+import {
+  isCopilotPathInstruction,
+  isCopilotRepositoryInstruction,
+} from "./copilot.js";
 
 const PATH_PATTERNS: Array<{
   expression: RegExp;
@@ -207,10 +211,7 @@ export function adapterForPath(path: string): SourceAdapter | undefined {
   )
     return "agents-md";
   if (path === "CLAUDE.md" || path.startsWith(".claude/")) return "claude";
-  if (
-    path === ".github/copilot-instructions.md" ||
-    path.startsWith(".github/instructions/")
-  )
+  if (isCopilotRepositoryInstruction(path) || isCopilotPathInstruction(path))
     return "copilot";
   if (path.startsWith(".cursor/rules/") || path === ".cursorrules")
     return "cursor";

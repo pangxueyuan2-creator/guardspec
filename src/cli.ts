@@ -247,7 +247,10 @@ async function handle(args: Args): Promise<number> {
     args.positional[0] === "compatibility" &&
     args.positional[1] === "rule-relay"
   ) {
-    const report = await assessRuleRelayCompatibility(root, flags(args, "target"));
+    const report = await assessRuleRelayCompatibility(
+      root,
+      flags(args, "target"),
+    );
     if (json) writeOutput(report, true);
     else
       writeOutput(

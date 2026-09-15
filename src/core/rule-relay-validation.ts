@@ -121,7 +121,7 @@ async function nearestLegacyPackageManifest(
       try {
         const parsed: unknown = JSON.parse(await safeRead(root, candidate));
         if (parsed && typeof parsed === "object") {
-          return parsed as PackageManifest;
+          return parsed;
         }
         return {};
       } catch {

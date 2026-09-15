@@ -70,9 +70,10 @@ describe("Copilot applyTo parsing", () => {
   });
 
   it("bounds pattern count and individual pattern length", () => {
-    const tooMany = Array.from({ length: 65 }, (_, index) => `src/${index}/**`).join(
-      ",",
-    );
+    const tooMany = Array.from(
+      { length: 65 },
+      (_, index) => `src/${index}/**`,
+    ).join(",");
     expect(parseCopilotApplyTo(`---\napplyTo: ${tooMany}\n---`).ok).toBe(
       false,
     );
@@ -118,7 +119,9 @@ describe("Copilot path-specific scan semantics", () => {
       ).toBe(false);
       expect(
         report.warnings.some((warning) =>
-          warning.includes("cannot safely intersect these rule kinds with applyTo"),
+          warning.includes(
+            "cannot safely intersect these rule kinds with applyTo",
+          ),
         ),
       ).toBe(true);
       expect(
@@ -158,9 +161,9 @@ describe("Copilot path-specific scan semantics", () => {
       expect(report.sources).toHaveLength(1);
       expect(report.sources[0]?.scope).toBe("**");
       expect(report.policy.rules[0]?.scope).toBe("**");
-      expect(evaluate(report.policy, "path", "docs/readme.md").requiredChecks).toEqual(
-        ["pnpm lint"],
-      );
+      expect(
+        evaluate(report.policy, "path", "docs/readme.md").requiredChecks,
+      ).toEqual(["pnpm lint"]);
     });
   });
 });

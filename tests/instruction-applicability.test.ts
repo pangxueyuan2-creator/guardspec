@@ -76,7 +76,10 @@ describe("instruction source applicability", () => {
       "Conditional Cursor rule.\n",
     );
 
-    const report = await explainInstructions(root, "packages/api/src/server.ts");
+    const report = await explainInstructions(
+      root,
+      "packages/api/src/server.ts",
+    );
     const paths = report.applicable.map((entry) => entry.path);
     expect(paths).toEqual(
       expect.arrayContaining([

@@ -137,7 +137,11 @@ export async function explainInstructions(
   for (const source of scan.sources.filter(isInstructionSource)) {
     const reason = indeterminateReason(source);
     if (reason) {
-      indeterminate.push({ path: source.path, adapter: source.adapter, reason });
+      indeterminate.push({
+        path: source.path,
+        adapter: source.adapter,
+        reason,
+      });
       continue;
     }
 

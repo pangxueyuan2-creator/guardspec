@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  copilotRepositoryInstructionScope,
   isCopilotPathInstruction,
+  isCopilotRepositoryInstruction,
   parseCopilotApplyTo,
 } from "../src/core/copilot.js";
 import { evaluate } from "../src/core/evaluator.js";
@@ -162,6 +164,106 @@ describe("Copilot path-specific scan semantics", () => {
       expect(
         evaluate(report.policy, "path", "docs/readme.md").requiredChecks,
       ).toEqual(["pnpm lint"]);
+    });
+  });
+});
+
+describe("Copilot repository instruction scan semantics", () => {
+  it("models root and nested repository instruction scopes", () => {
+    expect(isCopilotRepositoryInstruction(".github/copilot-instructions.md")).toBe(
+      true,
+    );
+    expect(
+      isCopilotRepositoryInstruction(
+        "packages/api/.github/copilot-instructions.md",
+      ),
+    ).toBe(true);
+    expect(
+      isCopilotRepositoryInstruction("packages/api/copilot-instructions.md"),
+    ).toBe(false);
+    expect(copilotRepositoryInstructionScope(".github/copilot-instructions.md")).toBe(
+      "**",
+    );
+    expect(
+      copilotRepositoryInstructionScope(
+        "packages/api/.github/copilot-instructions.md",
+      ),
+    ).toBe("packages/api/**");
+  });
+
+  it("composes root and nested checks while isolating sibling subtrees", async () => {
+    await withTempRepository(async (root) => {
+      await writeRepoFile(
+        root,
+        ".github/copilot-instructions.md",
+        "Before opening a pull request, run `pnpm lint`.",
+      );
+      await writeRepoFile(
+        root,
+        "packages/api/.github/copilot-instructions.md",
+        [
+          "Before opening a pull request, run `pnpm test:api`.",
+          "Do not modify `.github/workflows/**`.",
+        ].join("\n"),
+      );
+      await writeRepoFile(
+        root,
+        "packages/web/.github/copilot-instructions.md",
+        "Before opening a pull request, run `pnpm test:web`.",
+      );
+
+      const report = await scanRepository(root);
+      const scopes = new Map(
+        report.sources.map((source) => [source.path, source.scope]),
+      );
+      expect(scopes.get(".github/copilot-instructions.md")).toBe("**");
+      expect(
+        scopes.get("packages/api/.github/copilot-instructions.md"),
+      ).toBe("packages/api/**");
+      expect(
+        scopes.get("packages/web/.github/copilot-instructions.md"),
+      ).toBe("packages/web/**");
+
+      const apiChecks = evaluate(
+        report.policy,
+        "path",
+        "packages/api/src/server.ts",
+      ).requiredChecks;
+      expect(new Set(apiChecks)).toEqual(
+        new Set(["pnpm lint", "pnpm test:api"]),
+      );
+      expect(apiChecks).toHaveLength(2);
+
+      const webChecks = evaluate(
+        report.policy,
+        "path",
+        "packages/web/src/page.ts",
+      ).requiredChecks;
+      expect(new Set(webChecks)).toEqual(
+        new Set(["pnpm lint", "pnpm test:web"]),
+      );
+      expect(webChecks).toHaveLength(2);
+
+      expect(
+        evaluate(report.policy, "path", "docs/readme.md").requiredChecks,
+      ).toEqual(["pnpm lint"]);
+      expect(
+        report.warnings.some(
+          (warning) =>
+            warning.includes("packages/api/.github/copilot-instructions.md") &&
+            warning.includes(
+              "cannot safely intersect these rule kinds with the nested Copilot repository scope",
+            ),
+        ),
+      ).toBe(true);
+      expect(
+        report.policy.rules.some(
+          (rule) =>
+            rule.provenance[0]?.source ===
+              "packages/api/.github/copilot-instructions.md" &&
+            rule.kind !== "check",
+        ),
+      ).toBe(false);
     });
   });
 });

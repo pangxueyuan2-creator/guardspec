@@ -1,8 +1,5 @@
 import { posix } from "node:path";
-import {
-  isCopilotPathInstruction,
-  parseCopilotApplyTo,
-} from "./copilot.js";
+import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead, walkRepository } from "./fs-safe.js";
 import { scanRepository } from "./scanner.js";
 import type { DiscoveredSource } from "./types.js";
@@ -106,7 +103,8 @@ function pushCopilotApplyToFinding(
   findings.push({
     code: "INVALID_COPILOT_APPLY_TO",
     severity: "error",
-    message: "Path-specific Copilot instructions have invalid applyTo metadata.",
+    message:
+      "Path-specific Copilot instructions have invalid applyTo metadata.",
     file: file.source.path,
     detail: parsed.error,
   });
@@ -142,8 +140,14 @@ function localTarget(
     };
   }
 
-  const resolved = posix.normalize(posix.join(posix.dirname(sourcePath), target));
-  if (resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) {
+  const resolved = posix.normalize(
+    posix.join(posix.dirname(sourcePath), target),
+  );
+  if (
+    resolved === ".." ||
+    resolved.startsWith("../") ||
+    resolved.startsWith("/")
+  ) {
     return {
       skip: false,
       error: `Local Markdown link escapes the repository: ${rawTarget}`,
@@ -203,7 +207,8 @@ async function nearestPackageManifest(
 ): Promise<PackageManifest | undefined> {
   let current = posix.dirname(sourcePath);
   while (true) {
-    const candidate = current === "." ? "package.json" : `${current}/package.json`;
+    const candidate =
+      current === "." ? "package.json" : `${current}/package.json`;
     if (repositoryFiles.has(candidate)) {
       try {
         const parsed = JSON.parse(await safeRead(root, candidate)) as unknown;
@@ -284,7 +289,9 @@ export async function auditInstructions(
   }
 
   sortFindings(findings);
-  const errors = findings.filter((finding) => finding.severity === "error").length;
+  const errors = findings.filter(
+    (finding) => finding.severity === "error",
+  ).length;
   const warnings = findings.length - errors;
   return {
     root,

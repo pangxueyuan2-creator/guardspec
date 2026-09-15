@@ -10,11 +10,7 @@ const copilotPathInstruction =
   /(^|\/)\.github\/instructions\/.+\.instructions\.md$/i;
 
 export type RuleRelayAdapter =
-  | "agents-md"
-  | "claude"
-  | "copilot"
-  | "cursor"
-  | "gemini";
+  "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
 
 export interface RuleRelayExpectedSource {
   path: string;

@@ -6,7 +6,7 @@ import {
   isCopilotRepositoryInstruction,
   parseCopilotApplyTo,
 } from "./copilot.js";
-import { safeRead, walkRepository } from "./fs-safe.js";
+import { safeRead, walkRepositoryDetailed } from "./fs-safe.js";
 import {
   adapterForPath,
   extractCodeowners,
@@ -19,6 +19,7 @@ import type {
   PolicyRule,
   RiskSummary,
   ScanReport,
+  SourceAdapter,
 } from "./types.js";
 
 const RECOGNIZED = new Set([
@@ -35,6 +36,15 @@ const RECOGNIZED = new Set([
   ".cursorrules",
 ]);
 
+const INSTRUCTION_ADAPTERS = new Set<SourceAdapter>([
+  "agents-md",
+  "claude",
+  "copilot",
+  "cursor",
+  "gemini",
+  "opencode",
+]);
+
 function isCandidate(path: string): boolean {
   return (
     RECOGNIZED.has(basename(path)) ||
@@ -43,6 +53,15 @@ function isCandidate(path: string): boolean {
     isCopilotRepositoryInstruction(path) ||
     path.startsWith(".cursor/rules/")
   );
+}
+
+function isInstructionCandidate(path: string): boolean {
+  const adapter = adapterForPath(path);
+  return adapter !== undefined && INSTRUCTION_ADAPTERS.has(adapter);
+}
+
+function symlinkDetail(path: string, target?: string): string {
+  return target ? `${path} -> ${target}` : path;
 }
 
 function conflictKey(rule: PolicyRule): string {
@@ -181,10 +200,26 @@ function scopeNestedCopilotRepositoryRules(
 export async function scanRepository(root: string): Promise<ScanReport> {
   if (!existsSync(root))
     throw new Error(`Repository root does not exist: ${root}`);
-  const files = (await walkRepository(root)).filter(isCandidate);
+  const walk = await walkRepositoryDetailed(root);
+  const files = walk.files.filter(isCandidate);
   const rules: PolicyRule[] = [];
   const sources: DiscoveredSource[] = [];
   const warnings: string[] = [];
+
+  for (const symlink of walk.symlinks) {
+    if (symlink.kind === "directory") {
+      warnings.push(
+        `Skipped symlinked directory: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not traverse symlinked directories.`,
+      );
+      continue;
+    }
+    if (isInstructionCandidate(symlink.path)) {
+      warnings.push(
+        `Skipped symlinked instruction source: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not read symlinked instruction files.`,
+      );
+    }
+  }
+
   for (const path of files) {
     const adapter = adapterForPath(path);
     if (!adapter) continue;

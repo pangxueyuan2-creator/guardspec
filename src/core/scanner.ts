@@ -6,13 +6,17 @@ import {
   isCopilotRepositoryInstruction,
   parseCopilotApplyTo,
 } from "./copilot.js";
-import { safeRead, walkRepositoryDetailed } from "./fs-safe.js";
+import { safeRead, walkRepository } from "./fs-safe.js";
 import {
   adapterForPath,
   extractCodeowners,
   extractTextRules,
 } from "./extract.js";
 import { policyTemplate } from "./policy.js";
+import {
+  inspectRepositorySymlinks,
+  MAX_SYMLINK_DIAGNOSTICS,
+} from "./symlink-diagnostics.js";
 import type {
   Conflict,
   DiscoveredSource,
@@ -200,13 +204,13 @@ function scopeNestedCopilotRepositoryRules(
 export async function scanRepository(root: string): Promise<ScanReport> {
   if (!existsSync(root))
     throw new Error(`Repository root does not exist: ${root}`);
-  const walk = await walkRepositoryDetailed(root);
-  const files = walk.files.filter(isCandidate);
+  const files = (await walkRepository(root)).filter(isCandidate);
+  const symlinkReport = await inspectRepositorySymlinks(root);
   const rules: PolicyRule[] = [];
   const sources: DiscoveredSource[] = [];
   const warnings: string[] = [];
 
-  for (const symlink of walk.symlinks) {
+  for (const symlink of symlinkReport.symlinks) {
     if (symlink.kind === "directory") {
       warnings.push(
         `Skipped symlinked directory: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not traverse symlinked directories.`,
@@ -218,6 +222,11 @@ export async function scanRepository(root: string): Promise<ScanReport> {
         `Skipped symlinked instruction source: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not read symlinked instruction files.`,
       );
     }
+  }
+  if (symlinkReport.truncated) {
+    warnings.push(
+      `Symlink diagnostics were truncated after ${MAX_SYMLINK_DIAGNOSTICS} entries; additional symlinks were not classified.`,
+    );
   }
 
   for (const path of files) {

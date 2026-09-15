@@ -175,23 +175,37 @@ describe("instruction hygiene audit", () => {
     if (process.platform === "win32") return;
 
     await withTempRepository(async (root) => {
-      await writeRepoFile(root, "real-instructions.md", "Do not modify secrets/**.\n");
-      await writeRepoFile(root, "real-rules/hidden.md", "Not directly discoverable.\n");
+      await writeRepoFile(
+        root,
+        "real-instructions.md",
+        "Do not modify secrets/**.\n",
+      );
+      await writeRepoFile(
+        root,
+        "real-rules/hidden.md",
+        "Not directly discoverable.\n",
+      );
       await symlink("real-instructions.md", join(root, "AGENTS.md"), "file");
-      await symlink("real-instructions.md", join(root, "notes-link.md"), "file");
+      await symlink(
+        "real-instructions.md",
+        join(root, "notes-link.md"),
+        "file",
+      );
       await symlink("real-rules", join(root, "linked-rules"), "dir");
 
       const scan = await scanRepository(root);
       expect(scan.sources).toEqual([]);
       expect(scan.warnings).toEqual(
         expect.arrayContaining([
-          expect.stringContaining("Skipped symlinked instruction source: AGENTS.md"),
+          expect.stringContaining(
+            "Skipped symlinked instruction source: AGENTS.md",
+          ),
           expect.stringContaining("Skipped symlinked directory: linked-rules"),
         ]),
       );
-      expect(scan.warnings.some((warning) => warning.includes("notes-link.md"))).toBe(
-        false,
-      );
+      expect(
+        scan.warnings.some((warning) => warning.includes("notes-link.md")),
+      ).toBe(false);
 
       const report = await auditInstructions(root);
       expect(report.valid).toBe(true);

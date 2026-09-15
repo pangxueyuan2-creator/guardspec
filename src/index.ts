@@ -17,6 +17,8 @@ export type {
   InstructionFinding,
   InstructionFindingCode,
 } from "./core/instruction-hygiene.js";
+export { inventoryInstructions } from "./core/instruction-inventory.js";
+export type { InstructionInventoryReport } from "./core/instruction-inventory.js";
 export { explainInstructions } from "./core/instruction-applicability.js";
 export type {
   ApplicableInstruction,

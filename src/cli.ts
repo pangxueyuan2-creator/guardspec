@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { auditInstructions } from "./core/instruction-hygiene.js";
+import { inventoryInstructions } from "./core/instruction-inventory.js";
 import { explainInstructions } from "./core/instruction-applicability.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
 import { loadPolicy, policyTemplate, writePolicy } from "./core/policy.js";
@@ -21,7 +22,7 @@ const EXIT = {
 } as const;
 
 function usage(): string {
-  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec instructions explain <target-path> [--root <path>] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
+  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions scan [--root <path>] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec instructions explain <target-path> [--root <path>] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
 }
 
 interface Args {
@@ -194,6 +195,29 @@ async function handle(args: Args): Promise<number> {
         false,
       );
     return report.exitCode;
+  }
+  if (args.command === "instructions" && args.positional[0] === "scan") {
+    const report = await inventoryInstructions(root);
+    if (json) writeOutput(report, true);
+    else
+      writeOutput(
+        `Instruction sources\n  Sources: ${report.sources.length}\n  Adapters: ${report.adapters.join(", ") || "none"}${
+          report.sources.length > 0
+            ? `\n\n${report.sources
+                .map(
+                  (source) =>
+                    `${source.path} (${source.adapter})\n  Scope: ${source.scope}\n  Bytes: ${source.bytes}\n  Extracted rules: ${source.rulesExtracted}`,
+                )
+                .join("\n")}`
+            : "\n\nNo supported instruction sources discovered."
+        }${
+          report.warnings.length > 0
+            ? `\n\nScan warnings:\n${report.warnings.map((warning) => `  - ${warning}`).join("\n")}`
+            : ""
+        }`,
+        false,
+      );
+    return EXIT.success;
   }
   if (args.command === "instructions" && args.positional[0] === "check") {
     const report = await auditInstructions(root);

@@ -7,7 +7,7 @@ import {
   detectConflicts,
   scanRepository as scanRepositoryBase,
 } from "./scanner.js";
-import type { PolicyRule, ScanReport } from "./types.js";
+import type { DiscoveredSource, PolicyRule, ScanReport } from "./types.js";
 
 const ROOT_AGENTS_OVERRIDE = "AGENTS.override.md";
 
@@ -51,20 +51,20 @@ export async function scanRepository(root: string): Promise<ScanReport> {
       "agents-md",
       content,
     );
+    const source: DiscoveredSource = {
+      path: ROOT_AGENTS_OVERRIDE,
+      adapter: "agents-md",
+      scope: "**",
+      bytes: Buffer.byteLength(content),
+      rulesExtracted: extracted.length,
+    };
     const rules = sortedRules([...report.policy.rules, ...extracted]);
     const conflicts = detectConflicts(rules);
     return {
       ...report,
-      sources: [
-        ...report.sources,
-        {
-          path: ROOT_AGENTS_OVERRIDE,
-          adapter: "agents-md",
-          scope: "**",
-          bytes: Buffer.byteLength(content),
-          rulesExtracted: extracted.length,
-        },
-      ].sort((left, right) => left.path.localeCompare(right.path)),
+      sources: [...report.sources, source].sort((left, right) =>
+        left.path.localeCompare(right.path),
+      ),
       policy: {
         ...report.policy,
         rules,

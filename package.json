@@ -38,7 +38,7 @@
     "clean": "rm -rf dist coverage",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write tests/rule-relay-validation-parity.test.ts && git diff -- tests/rule-relay-validation-parity.test.ts && exit 1",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",

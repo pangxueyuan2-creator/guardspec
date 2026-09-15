@@ -38,7 +38,7 @@
     "clean": "rm -rf dist coverage",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/core/instruction-applicability.ts tests/instruction-applicability.test.ts && git diff --no-ext-diff --unified=200 -- src/core/instruction-applicability.ts tests/instruction-applicability.test.ts && exit 1",
+    "format:check": "prettier --check .",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",

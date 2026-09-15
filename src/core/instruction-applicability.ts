@@ -65,16 +65,10 @@ function isInstructionSource(source: DiscoveredSource): boolean {
 }
 
 function indeterminateReason(source: DiscoveredSource): string | undefined {
-  if (
-    source.adapter === "claude" &&
-    source.path.startsWith(".claude/rules/")
-  ) {
+  if (source.adapter === "claude" && source.path.startsWith(".claude/rules/")) {
     return "Claude rule targeting is conditional metadata that GuardSpec does not safely interpret yet.";
   }
-  if (
-    source.adapter === "cursor" &&
-    source.path.startsWith(".cursor/rules/")
-  ) {
+  if (source.adapter === "cursor" && source.path.startsWith(".cursor/rules/")) {
     return "Cursor rule targeting is conditional metadata that GuardSpec does not safely interpret yet.";
   }
   if (

@@ -93,9 +93,7 @@ describe("instruction source applicability", () => {
         "packages/api/AGENTS.md",
       ]),
     );
-    expect(paths).not.toContain(
-      "packages/web/.github/copilot-instructions.md",
-    );
+    expect(paths).not.toContain("packages/web/.github/copilot-instructions.md");
     expect(
       report.applicable.find(
         (entry) =>

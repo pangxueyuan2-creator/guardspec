@@ -3,9 +3,12 @@ const PATH_SPECIFIC_INSTRUCTION =
 const MAX_PATTERNS = 64;
 const MAX_PATTERN_LENGTH = 512;
 
+type ParseFailure = { readonly ok: false; readonly error: string };
+type ScalarResult = { readonly ok: true; readonly value: string } | ParseFailure;
+
 export type CopilotApplyToResult =
   | { readonly ok: true; readonly patterns: readonly string[] }
-  | { readonly ok: false; readonly error: string };
+  | ParseFailure;
 
 function normalizePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\.\//, "");
@@ -15,9 +18,7 @@ export function isCopilotPathInstruction(relativePath: string): boolean {
   return PATH_SPECIFIC_INSTRUCTION.test(normalizePath(relativePath));
 }
 
-function scalarValue(
-  rawValue: string,
-): { readonly ok: true; readonly value: string } | CopilotApplyToResult {
+function scalarValue(rawValue: string): ScalarResult {
   const value = rawValue.trim();
   if (!value) return { ok: false, error: "applyTo must not be empty." };
 
@@ -35,9 +36,7 @@ function scalarValue(
   return { ok: true, value };
 }
 
-function normalizePattern(
-  rawPattern: string,
-): { readonly ok: true; readonly value: string } | CopilotApplyToResult {
+function normalizePattern(rawPattern: string): ScalarResult {
   const value = normalizePath(rawPattern.trim());
   if (!value)
     return { ok: false, error: "applyTo contains an empty glob pattern." };

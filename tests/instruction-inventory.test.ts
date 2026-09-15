@@ -8,7 +8,9 @@ import { inventoryInstructions } from "../src/core/instruction-inventory.js";
 const temporary: string[] = [];
 
 async function repository(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "guardspec-instruction-inventory-"));
+  const root = await mkdtemp(
+    join(tmpdir(), "guardspec-instruction-inventory-"),
+  );
   temporary.push(root);
   return root;
 }

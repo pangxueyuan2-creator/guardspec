@@ -1,5 +1,5 @@
 import { realpathSync, lstatSync } from "node:fs";
-import { readdir, readFile, readlink, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve, sep, isAbsolute, win32 } from "node:path";
 
 const IGNORED_DIRECTORIES = new Set([
@@ -14,20 +14,6 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 export const MAX_FILE_BYTES = 512_000;
 export const MAX_FILES = 2_000;
-export const MAX_SYMLINK_DIAGNOSTICS = 100;
-
-export type RepositorySymlinkKind = "file" | "directory" | "other" | "unknown";
-
-export interface RepositorySymlink {
-  path: string;
-  kind: RepositorySymlinkKind;
-  target?: string;
-}
-
-export interface RepositoryWalkResult {
-  files: string[];
-  symlinks: RepositorySymlink[];
-}
 
 export function normalizeRepositoryPath(input: string): string {
   const universal = input.replaceAll("\\", "/");
@@ -86,37 +72,8 @@ export async function safeRead(
   return readFile(resolvedTarget, "utf8");
 }
 
-async function inspectSymlink(
-  full: string,
-  repositoryPath: string,
-): Promise<RepositorySymlink> {
-  let target: string | undefined;
-  try {
-    target = await readlink(full);
-  } catch {
-    // A broken or concurrently-mutated symlink is still useful as a diagnostic.
-  }
-
-  let kind: RepositorySymlinkKind = "unknown";
-  try {
-    const metadata = await stat(full);
-    kind = metadata.isDirectory()
-      ? "directory"
-      : metadata.isFile()
-        ? "file"
-        : "other";
-  } catch {
-    // Never follow the link further just to classify an inaccessible target.
-  }
-
-  return { path: repositoryPath, kind, ...(target ? { target } : {}) };
-}
-
-export async function walkRepositoryDetailed(
-  root: string,
-): Promise<RepositoryWalkResult> {
+export async function walkRepository(root: string): Promise<string[]> {
   const output: string[] = [];
-  const symlinks: RepositorySymlink[] = [];
   async function walk(current: string): Promise<void> {
     if (output.length >= MAX_FILES) return;
     const entries = await readdir(current, { withFileTypes: true });
@@ -124,12 +81,7 @@ export async function walkRepositoryDetailed(
       if (output.length >= MAX_FILES) return;
       const full = resolve(current, entry.name);
       const relativePath = relative(root, full).split(sep).join("/");
-      if (entry.isSymbolicLink()) {
-        if (symlinks.length < MAX_SYMLINK_DIAGNOSTICS) {
-          symlinks.push(await inspectSymlink(full, relativePath));
-        }
-        continue;
-      }
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         if (!IGNORED_DIRECTORIES.has(entry.name)) await walk(full);
         continue;
@@ -143,12 +95,5 @@ export async function walkRepositoryDetailed(
     }
   }
   await walk(root);
-  return {
-    files: output.sort((a, b) => a.localeCompare(b)),
-    symlinks: symlinks.sort((a, b) => a.path.localeCompare(b.path)),
-  };
-}
-
-export async function walkRepository(root: string): Promise<string[]> {
-  return (await walkRepositoryDetailed(root)).files;
+  return output.sort((a, b) => a.localeCompare(b));
 }

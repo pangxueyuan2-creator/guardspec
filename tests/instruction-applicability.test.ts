@@ -115,7 +115,12 @@ describe("instruction source applicability", () => {
 
   it("orders nested RuleRelay exact-name sources before repository-wide peers", async () => {
     const root = await repository();
-    for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".cursorrules"]) {
+    for (const name of [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "GEMINI.md",
+      ".cursorrules",
+    ]) {
       await writeRepoFile(root, name, `Root ${name} guidance.\n`);
       await writeRepoFile(
         root,

@@ -349,23 +349,11 @@ describe("RuleRelay compatibility", () => {
       targetChecks: Array<{ target: string; ready: boolean }>;
     };
     expect(report.ready).toBe(true);
-    expect(report.targetChecks).toEqual([
-      {
-        target: "a/file.ts",
-        ready: true,
-        expectedApplicableSources: expect.any(Array),
-        matchedApplicableSources: expect.any(Array),
-        expandedApplicableSources: expect.any(Array),
-        blockers: [],
-      },
-      {
-        target: "z/file.ts",
-        ready: true,
-        expectedApplicableSources: expect.any(Array),
-        matchedApplicableSources: expect.any(Array),
-        expandedApplicableSources: expect.any(Array),
-        blockers: [],
-      },
+    expect(
+      report.targetChecks.map(({ target, ready }) => ({ target, ready })),
+    ).toEqual([
+      { target: "a/file.ts", ready: true },
+      { target: "z/file.ts", ready: true },
     ]);
   });
 

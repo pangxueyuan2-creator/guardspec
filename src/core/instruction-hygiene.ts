@@ -211,7 +211,7 @@ async function nearestPackageManifest(
       current === "." ? "package.json" : `${current}/package.json`;
     if (repositoryFiles.has(candidate)) {
       try {
-        const parsed = JSON.parse(await safeRead(root, candidate)) as unknown;
+        const parsed: unknown = JSON.parse(await safeRead(root, candidate));
         if (parsed && typeof parsed === "object") {
           return parsed as PackageManifest;
         }

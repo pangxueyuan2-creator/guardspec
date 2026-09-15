@@ -1,5 +1,6 @@
 import { basename, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead, walkRepository } from "./fs-safe.js";
 import {
   adapterForPath,
@@ -33,7 +34,7 @@ function isCandidate(path: string): boolean {
   return (
     RECOGNIZED.has(basename(path)) ||
     path.startsWith(".claude/rules/") ||
-    path.startsWith(".github/instructions/") ||
+    isCopilotPathInstruction(path) ||
     path === ".github/copilot-instructions.md" ||
     path.startsWith(".cursor/rules/")
   );
@@ -126,6 +127,31 @@ export function calculateRisk(
   return { score: Math.min(score, 100), level, signals };
 }
 
+function scopeCopilotPathRules(
+  source: string,
+  rules: PolicyRule[],
+  patterns: readonly string[],
+  warnings: string[],
+): PolicyRule[] {
+  const unsupported = rules.filter((rule) => rule.kind !== "check");
+  if (unsupported.length > 0) {
+    const kinds = [...new Set(unsupported.map((rule) => rule.kind))].sort();
+    warnings.push(
+      `Skipped ${unsupported.length} conditional rule(s) from ${source} (${kinds.join(", ")}): GuardSpec cannot safely intersect these rule kinds with applyTo yet.`,
+    );
+  }
+
+  return rules
+    .filter((rule) => rule.kind === "check")
+    .flatMap((rule) =>
+      patterns.map((scope, index) => ({
+        ...rule,
+        id: `${rule.id}-applyto-${index + 1}`,
+        scope,
+      })),
+    );
+}
+
 export async function scanRepository(root: string): Promise<ScanReport> {
   if (!existsSync(root))
     throw new Error(`Repository root does not exist: ${root}`);
@@ -138,15 +164,41 @@ export async function scanRepository(root: string): Promise<ScanReport> {
     if (!adapter) continue;
     try {
       const content = await safeRead(root, path);
-      const extracted =
+      let extracted =
         adapter === "codeowners"
           ? extractCodeowners(path, content)
           : extractTextRules(path, adapter, content);
+      let sourceScope = dirname(path) === "." ? "**" : `${dirname(path)}/**`;
+
+      if (adapter === "copilot" && isCopilotPathInstruction(path)) {
+        const applyTo = parseCopilotApplyTo(content);
+        if (!applyTo.ok) {
+          warnings.push(`Skipped ${path}: ${applyTo.error}`);
+          sources.push({
+            path,
+            adapter,
+            scope: "invalid applyTo",
+            bytes: Buffer.byteLength(content),
+            rulesExtracted: 0,
+          });
+          continue;
+        }
+        sourceScope = applyTo.patterns.join(",");
+        extracted = scopeCopilotPathRules(
+          path,
+          extracted,
+          applyTo.patterns,
+          warnings,
+        );
+      } else if (path === ".github/copilot-instructions.md") {
+        sourceScope = "**";
+      }
+
       rules.push(...extracted);
       sources.push({
         path,
         adapter,
-        scope: dirname(path) === "." ? "**" : `${dirname(path)}/**`,
+        scope: sourceScope,
         bytes: Buffer.byteLength(content),
         rulesExtracted: extracted.length,
       });

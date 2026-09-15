@@ -170,9 +170,9 @@ describe("Copilot path-specific scan semantics", () => {
 
 describe("Copilot repository instruction scan semantics", () => {
   it("models root and nested repository instruction scopes", () => {
-    expect(isCopilotRepositoryInstruction(".github/copilot-instructions.md")).toBe(
-      true,
-    );
+    expect(
+      isCopilotRepositoryInstruction(".github/copilot-instructions.md"),
+    ).toBe(true);
     expect(
       isCopilotRepositoryInstruction(
         "packages/api/.github/copilot-instructions.md",
@@ -181,9 +181,9 @@ describe("Copilot repository instruction scan semantics", () => {
     expect(
       isCopilotRepositoryInstruction("packages/api/copilot-instructions.md"),
     ).toBe(false);
-    expect(copilotRepositoryInstructionScope(".github/copilot-instructions.md")).toBe(
-      "**",
-    );
+    expect(
+      copilotRepositoryInstructionScope(".github/copilot-instructions.md"),
+    ).toBe("**");
     expect(
       copilotRepositoryInstructionScope(
         "packages/api/.github/copilot-instructions.md",

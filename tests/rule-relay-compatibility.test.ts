@@ -185,6 +185,32 @@ describe("RuleRelay compatibility", () => {
     );
   });
 
+  it("audits supplemental legacy sources before declaring migration readiness", async () => {
+    const root = await repository();
+    await writeRepoFile(
+      root,
+      "packages/api/claude.md",
+      "See [missing guidance](./missing.md).\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root);
+
+    expect(report.ready).toBe(false);
+    expect(report.matchedSources).toEqual([
+      {
+        path: "packages/api/claude.md",
+        adapter: "claude",
+        scope: "packages/api/**",
+      },
+    ]);
+    expect(report.blockers).toEqual([
+      expect.objectContaining({
+        code: "LEGACY_SOURCE_HYGIENE_ERROR",
+        file: "packages/api/claude.md",
+      }),
+    ]);
+  });
+
   it("turns legacy-source hygiene errors into migration blockers", async () => {
     const root = await repository();
     await writeRepoFile(

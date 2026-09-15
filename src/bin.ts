@@ -59,9 +59,7 @@ async function runRuleRelayCheck(argv: readonly string[]): Promise<void> {
   }
 
   process.exitCode =
-    report.errors > 0 || (strict && report.warnings > 0)
-      ? INVALID_EXIT
-      : 0;
+    report.errors > 0 || (strict && report.warnings > 0) ? INVALID_EXIT : 0;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {

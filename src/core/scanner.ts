@@ -168,8 +168,7 @@ export async function scanRepository(root: string): Promise<ScanReport> {
         adapter === "codeowners"
           ? extractCodeowners(path, content)
           : extractTextRules(path, adapter, content);
-      let sourceScope =
-        dirname(path) === "." ? "**" : `${dirname(path)}/**`;
+      let sourceScope = dirname(path) === "." ? "**" : `${dirname(path)}/**`;
 
       if (adapter === "copilot" && isCopilotPathInstruction(path)) {
         const applyTo = parseCopilotApplyTo(content);

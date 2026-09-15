@@ -217,12 +217,12 @@ describe("Copilot repository instruction scan semantics", () => {
         report.sources.map((source) => [source.path, source.scope]),
       );
       expect(scopes.get(".github/copilot-instructions.md")).toBe("**");
-      expect(
-        scopes.get("packages/api/.github/copilot-instructions.md"),
-      ).toBe("packages/api/**");
-      expect(
-        scopes.get("packages/web/.github/copilot-instructions.md"),
-      ).toBe("packages/web/**");
+      expect(scopes.get("packages/api/.github/copilot-instructions.md")).toBe(
+        "packages/api/**",
+      );
+      expect(scopes.get("packages/web/.github/copilot-instructions.md")).toBe(
+        "packages/web/**",
+      );
 
       const apiChecks = evaluate(
         report.policy,

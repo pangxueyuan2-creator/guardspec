@@ -232,11 +232,7 @@ describe("instruction source applicability", () => {
   it("exposes specificity ordering through CLI JSON", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
-    await writeRepoFile(
-      root,
-      "packages/api/AGENTS.md",
-      "Package guidance.\n",
-    );
+    await writeRepoFile(root, "packages/api/AGENTS.md", "Package guidance.\n");
     const output: string[] = [];
     const original = process.stdout.write.bind(process.stdout);
     process.stdout.write = (chunk: string) => {

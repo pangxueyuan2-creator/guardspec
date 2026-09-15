@@ -1,5 +1,4 @@
 import { lstat } from "node:fs/promises";
-import { basename } from "node:path";
 
 import { extractTextRules } from "./extract.js";
 import { safeRead, safeResolve } from "./fs-safe.js";
@@ -68,7 +67,6 @@ export async function scanRepository(root: string): Promise<ScanReport> {
       ].sort((left, right) => left.path.localeCompare(right.path)),
       policy: {
         ...report.policy,
-        name: report.policy.name || basename(root),
         rules,
       },
       conflicts,

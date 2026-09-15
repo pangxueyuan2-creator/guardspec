@@ -1,0 +1,86 @@
+name: Security transitive refresh
+
+on:
+  push:
+    branches:
+      - fix/security-transitive-hono-qs
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.22.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Refresh lockfile
+        run: pnpm install --lockfile-only
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile
+      - name: Verify patched transitive floors
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          import YAML from 'yaml';
+
+          const lock = YAML.parse(await readFile('pnpm-lock.yaml', 'utf8'));
+          const keys = Object.keys(lock.packages ?? {});
+          const floors = new Map([
+            ['hono', [4, 13, 5]],
+            ['qs', [6, 16, 0]],
+          ]);
+
+          const compare = (actual, floor) => {
+            const parts = actual.split('.').slice(0, 3).map((part) => Number.parseInt(part, 10));
+            for (let i = 0; i < 3; i += 1) {
+              const left = Number.isFinite(parts[i]) ? parts[i] : 0;
+              const right = floor[i];
+              if (left !== right) return left - right;
+            }
+            return 0;
+          };
+
+          for (const [name, floor] of floors) {
+            const versions = keys
+              .filter((key) => key.startsWith(`${name}@`))
+              .map((key) => key.slice(name.length + 1).split('(')[0]);
+            if (versions.length === 0) throw new Error(`Missing ${name} from lockfile`);
+            const unsafe = versions.filter((version) => compare(version, floor) < 0);
+            if (unsafe.length > 0) {
+              throw new Error(`${name} below patched floor ${floor.join('.')}: ${unsafe.join(', ')}`);
+            }
+            console.log(`${name}: ${versions.join(', ')}`);
+          }
+          NODE
+      - name: Quality gates
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm action:build
+          pnpm pack:check
+      - name: Commit generated lockfile and bundle
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml action/dist
+          git rm .github/workflows/security-transitive-refresh.yml
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git commit -m "build(security): refresh patched transitive graph"
+          git push origin HEAD:fix/security-transitive-hono-qs

@@ -14,11 +14,7 @@ const SCHEMA = "guardspec.dev/rule-relay-compatibility/v1" as const;
 const MAX_TARGETS = 64;
 
 export type RuleRelayAdapter =
-  | "agents-md"
-  | "claude"
-  | "copilot"
-  | "cursor"
-  | "gemini";
+  "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
 
 export interface RuleRelayExpectedSource {
   path: string;

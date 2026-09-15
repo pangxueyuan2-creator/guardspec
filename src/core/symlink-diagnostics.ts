@@ -82,7 +82,9 @@ export async function inspectRepositorySymlinks(
 
   await walk(root);
   return {
-    symlinks: symlinks.sort((left, right) => left.path.localeCompare(right.path)),
+    symlinks: symlinks.sort((left, right) =>
+      left.path.localeCompare(right.path),
+    ),
     truncated,
   };
 }

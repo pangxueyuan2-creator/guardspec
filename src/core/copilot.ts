@@ -5,12 +5,10 @@ const MAX_PATTERN_LENGTH = 512;
 
 type ParseFailure = { readonly ok: false; readonly error: string };
 type ScalarResult =
-  | { readonly ok: true; readonly value: string }
-  | ParseFailure;
+  { readonly ok: true; readonly value: string } | ParseFailure;
 
 export type CopilotApplyToResult =
-  | { readonly ok: true; readonly patterns: readonly string[] }
-  | ParseFailure;
+  { readonly ok: true; readonly patterns: readonly string[] } | ParseFailure;
 
 function normalizePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\.\//, "");

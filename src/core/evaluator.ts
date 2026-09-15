@@ -66,7 +66,9 @@ export function evaluate(
             rule.effect === "require" &&
             matches(rule, target),
         )
-        .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : [])),
+        .flatMap((rule) =>
+          typeof rule.value === "string" ? [rule.value] : [],
+        ),
     ),
   ];
   const approvalRequired = policy.rules.some(

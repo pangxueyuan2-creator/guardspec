@@ -42420,6 +42420,7 @@ async function fs_safe_walkRepository(root) {
 }
 
 ;// CONCATENATED MODULE: ./src/core/extract.ts
+
 const PATH_PATTERNS = [
     {
         // English + Chinese deny forms. Allow optional spaces so "禁止修改`path`" works.
@@ -42574,8 +42575,7 @@ function extract_adapterForPath(path) {
         return "agents-md";
     if (path === "CLAUDE.md" || path.startsWith(".claude/"))
         return "claude";
-    if (path === ".github/copilot-instructions.md" ||
-        path.startsWith(".github/instructions/"))
+    if (isCopilotRepositoryInstruction(path) || isCopilotPathInstruction(path))
         return "copilot";
     if (path.startsWith(".cursor/rules/") || path === ".cursorrules")
         return "cursor";
@@ -50512,7 +50512,7 @@ function isCandidate(path) {
     return (RECOGNIZED.has(basename(path)) ||
         path.startsWith(".claude/rules/") ||
         isCopilotPathInstruction(path) ||
-        path === ".github/copilot-instructions.md" ||
+        isCopilotRepositoryInstruction(path) ||
         path.startsWith(".cursor/rules/"));
 }
 function conflictKey(rule) {
@@ -50597,6 +50597,18 @@ function scopeCopilotPathRules(source, rules, patterns, warnings) {
         scope,
     })));
 }
+function scopeNestedCopilotRepositoryRules(source, rules, scope, warnings) {
+    if (scope === "**")
+        return rules;
+    const unsupported = rules.filter((rule) => rule.kind !== "check");
+    if (unsupported.length > 0) {
+        const kinds = [...new Set(unsupported.map((rule) => rule.kind))].sort();
+        warnings.push(`Skipped ${unsupported.length} nested repository rule(s) from ${source} (${kinds.join(", ")}): GuardSpec cannot safely intersect these rule kinds with the nested Copilot repository scope yet.`);
+    }
+    return rules
+        .filter((rule) => rule.kind === "check")
+        .map((rule) => ({ ...rule, scope }));
+}
 async function scanRepository(root) {
     if (!existsSync(root))
         throw new Error(`Repository root does not exist: ${root}`);
@@ -50630,8 +50642,15 @@ async function scanRepository(root) {
                 sourceScope = applyTo.patterns.join(",");
                 extracted = scopeCopilotPathRules(path, extracted, applyTo.patterns, warnings);
             }
-            else if (path === ".github/copilot-instructions.md") {
-                sourceScope = "**";
+            else if (adapter === "copilot" &&
+                isCopilotRepositoryInstruction(path)) {
+                const repositoryScope = copilotRepositoryInstructionScope(path);
+                if (!repositoryScope) {
+                    warnings.push(`Skipped ${path}: invalid Copilot repository scope.`);
+                    continue;
+                }
+                sourceScope = repositoryScope;
+                extracted = scopeNestedCopilotRepositoryRules(path, extracted, repositoryScope, warnings);
             }
             rules.push(...extracted);
             sources.push({

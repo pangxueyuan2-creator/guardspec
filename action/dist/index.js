@@ -50494,6 +50494,7 @@ const policyJsonSchema = {
 
 
 
+
 const RECOGNIZED = new Set([
     "AGENTS.md",
     "AGENTS.override.md",
@@ -50510,7 +50511,7 @@ const RECOGNIZED = new Set([
 function isCandidate(path) {
     return (RECOGNIZED.has(basename(path)) ||
         path.startsWith(".claude/rules/") ||
-        path.startsWith(".github/instructions/") ||
+        isCopilotPathInstruction(path) ||
         path === ".github/copilot-instructions.md" ||
         path.startsWith(".cursor/rules/"));
 }
@@ -50582,6 +50583,20 @@ function calculateRisk(rules, conflicts) {
                 : "low";
     return { score: Math.min(score, 100), level, signals };
 }
+function scopeCopilotPathRules(source, rules, patterns, warnings) {
+    const unsupported = rules.filter((rule) => rule.kind !== "check");
+    if (unsupported.length > 0) {
+        const kinds = [...new Set(unsupported.map((rule) => rule.kind))].sort();
+        warnings.push(`Skipped ${unsupported.length} conditional rule(s) from ${source} (${kinds.join(", ")}): GuardSpec cannot safely intersect these rule kinds with applyTo yet.`);
+    }
+    return rules
+        .filter((rule) => rule.kind === "check")
+        .flatMap((rule) => patterns.map((scope, index) => ({
+        ...rule,
+        id: `${rule.id}-applyto-${index + 1}`,
+        scope,
+    })));
+}
 async function scanRepository(root) {
     if (!existsSync(root))
         throw new Error(`Repository root does not exist: ${root}`);
@@ -50595,14 +50610,34 @@ async function scanRepository(root) {
             continue;
         try {
             const content = await safeRead(root, path);
-            const extracted = adapter === "codeowners"
+            let extracted = adapter === "codeowners"
                 ? extractCodeowners(path, content)
                 : extractTextRules(path, adapter, content);
+            let sourceScope = dirname(path) === "." ? "**" : `${dirname(path)}/**`;
+            if (adapter === "copilot" && isCopilotPathInstruction(path)) {
+                const applyTo = parseCopilotApplyTo(content);
+                if (!applyTo.ok) {
+                    warnings.push(`Skipped ${path}: ${applyTo.error}`);
+                    sources.push({
+                        path,
+                        adapter,
+                        scope: "invalid applyTo",
+                        bytes: Buffer.byteLength(content),
+                        rulesExtracted: 0,
+                    });
+                    continue;
+                }
+                sourceScope = applyTo.patterns.join(",");
+                extracted = scopeCopilotPathRules(path, extracted, applyTo.patterns, warnings);
+            }
+            else if (path === ".github/copilot-instructions.md") {
+                sourceScope = "**";
+            }
             rules.push(...extracted);
             sources.push({
                 path,
                 adapter,
-                scope: dirname(path) === "." ? "**" : `${dirname(path)}/**`,
+                scope: sourceScope,
                 bytes: Buffer.byteLength(content),
                 rulesExtracted: extracted.length,
             });
@@ -50666,6 +50701,16 @@ function ruleKindForAction(action) {
     return [action];
 }
 function evaluate(policy, action, target) {
+    const requiredChecks = [
+        ...new Set(policy.rules
+            .filter((rule) => rule.kind === "check" &&
+            rule.effect === "require" &&
+            matches(rule, target))
+            .flatMap((rule) => typeof rule.value === "string" ? [rule.value] : [])),
+    ];
+    const approvalRequired = policy.rules.some((rule) => rule.kind === "approval" &&
+        rule.effect === "require" &&
+        matches(rule, target));
     const candidates = policy.rules
         .filter((rule) => ruleKindForAction(action).includes(rule.kind) && matches(rule, target))
         .sort((left, right) => specificity(right.scope) - specificity(left.scope) ||
@@ -50679,21 +50724,13 @@ function evaluate(policy, action, target) {
             target,
             matchedRules: [],
             reason: "No matching policy rule; review repository defaults before proceeding.",
-            requiredChecks: [],
-            approvalRequired: false,
+            requiredChecks,
+            approvalRequired,
         };
     const bestSpecificity = specificity(candidates[0].scope);
     const applicable = candidates.filter((rule) => specificity(rule.scope) === bestSpecificity);
     const hasAllow = applicable.some((rule) => rule.effect === "allow");
     const hasDeny = applicable.some((rule) => rule.effect === "deny");
-    const requiredChecks = policy.rules
-        .filter((rule) => rule.kind === "check" &&
-        rule.effect === "require" &&
-        matches(rule, target))
-        .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : []));
-    const approvalRequired = policy.rules.some((rule) => rule.kind === "approval" &&
-        rule.effect === "require" &&
-        matches(rule, target));
     if (hasAllow && hasDeny)
         return {
             allowed: false,

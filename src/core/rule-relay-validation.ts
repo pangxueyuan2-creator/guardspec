@@ -1,11 +1,4 @@
-import {
-  dirname,
-  isAbsolute,
-  posix,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead } from "./fs-safe.js";
 import type { InstructionFinding } from "./instruction-hygiene.js";

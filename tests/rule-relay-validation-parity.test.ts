@@ -8,7 +8,9 @@ import { assessRuleRelayCompatibility } from "../src/core/rule-relay-compatibili
 const temporary: string[] = [];
 
 async function repository(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "guardspec-rule-relay-validation-"));
+  const root = await mkdtemp(
+    join(tmpdir(), "guardspec-rule-relay-validation-"),
+  );
   temporary.push(root);
   return root;
 }
@@ -180,7 +182,11 @@ describe("RuleRelay validation parity", () => {
     const report = JSON.parse(output.join("")) as {
       ready: boolean;
       validation: {
-        missingFindings: Array<{ code: string; severity: string; file: string }>;
+        missingFindings: Array<{
+          code: string;
+          severity: string;
+          file: string;
+        }>;
       };
       blockers: Array<{ code: string; file: string }>;
     };

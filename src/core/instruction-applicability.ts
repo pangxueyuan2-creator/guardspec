@@ -38,7 +38,11 @@ function normalizeTarget(rawTarget: string): string {
   if (!trimmed) throw new Error("Instruction target path must not be empty.");
   if (trimmed.includes("\0"))
     throw new Error("Instruction target path must not contain NUL bytes.");
-  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("\\")) {
+  if (
+    /^[a-zA-Z]:[\\/]/.test(trimmed) ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\")
+  ) {
     throw new Error("Instruction target path must be repository-relative.");
   }
 
@@ -49,7 +53,9 @@ function normalizeTarget(rawTarget: string): string {
     );
   }
 
-  const segments = normalized.split("/").filter((segment) => segment !== "" && segment !== ".");
+  const segments = normalized
+    .split("/")
+    .filter((segment) => segment !== "" && segment !== ".");
   if (segments.length === 0) return ".";
   return segments.join("/").normalize("NFC");
 }
@@ -59,10 +65,16 @@ function isInstructionSource(source: DiscoveredSource): boolean {
 }
 
 function indeterminateReason(source: DiscoveredSource): string | undefined {
-  if (source.adapter === "claude" && source.path.startsWith(".claude/rules/")) {
+  if (
+    source.adapter === "claude" &&
+    source.path.startsWith(".claude/rules/")
+  ) {
     return "Claude rule targeting is conditional metadata that GuardSpec does not safely interpret yet.";
   }
-  if (source.adapter === "cursor" && source.path.startsWith(".cursor/rules/")) {
+  if (
+    source.adapter === "cursor" &&
+    source.path.startsWith(".cursor/rules/")
+  ) {
     return "Cursor rule targeting is conditional metadata that GuardSpec does not safely interpret yet.";
   }
   if (
@@ -107,7 +119,10 @@ function compareByPath(
   left: { path: string; adapter: SourceAdapter },
   right: { path: string; adapter: SourceAdapter },
 ): number {
-  return left.path.localeCompare(right.path) || left.adapter.localeCompare(right.adapter);
+  return (
+    left.path.localeCompare(right.path) ||
+    left.adapter.localeCompare(right.adapter)
+  );
 }
 
 export async function explainInstructions(

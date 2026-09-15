@@ -162,7 +162,7 @@ describe("instruction source applicability", () => {
     ).toBe(true);
   });
 
-  it.each(["../secret", "/etc/passwd", "C:\\secret", "\\\\server\\share"]) (
+  it.each(["../secret", "/etc/passwd", "C:\\secret", "\\\\server\\share"])(
     "rejects unsafe target %s",
     async (target) => {
       await expect(explainInstructions(".", target)).rejects.toThrow(

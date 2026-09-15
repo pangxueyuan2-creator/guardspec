@@ -1,6 +1,11 @@
 import { basename, dirname } from "node:path";
 import { existsSync } from "node:fs";
-import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
+import {
+  copilotRepositoryInstructionScope,
+  isCopilotPathInstruction,
+  isCopilotRepositoryInstruction,
+  parseCopilotApplyTo,
+} from "./copilot.js";
 import { safeRead, walkRepository } from "./fs-safe.js";
 import {
   adapterForPath,
@@ -35,7 +40,7 @@ function isCandidate(path: string): boolean {
     RECOGNIZED.has(basename(path)) ||
     path.startsWith(".claude/rules/") ||
     isCopilotPathInstruction(path) ||
-    path === ".github/copilot-instructions.md" ||
+    isCopilotRepositoryInstruction(path) ||
     path.startsWith(".cursor/rules/")
   );
 }
@@ -152,6 +157,27 @@ function scopeCopilotPathRules(
     );
 }
 
+function scopeNestedCopilotRepositoryRules(
+  source: string,
+  rules: PolicyRule[],
+  scope: string,
+  warnings: string[],
+): PolicyRule[] {
+  if (scope === "**") return rules;
+
+  const unsupported = rules.filter((rule) => rule.kind !== "check");
+  if (unsupported.length > 0) {
+    const kinds = [...new Set(unsupported.map((rule) => rule.kind))].sort();
+    warnings.push(
+      `Skipped ${unsupported.length} nested repository rule(s) from ${source} (${kinds.join(", ")}): GuardSpec cannot safely intersect these rule kinds with the nested Copilot repository scope yet.`,
+    );
+  }
+
+  return rules
+    .filter((rule) => rule.kind === "check")
+    .map((rule) => ({ ...rule, scope }));
+}
+
 export async function scanRepository(root: string): Promise<ScanReport> {
   if (!existsSync(root))
     throw new Error(`Repository root does not exist: ${root}`);
@@ -190,8 +216,22 @@ export async function scanRepository(root: string): Promise<ScanReport> {
           applyTo.patterns,
           warnings,
         );
-      } else if (path === ".github/copilot-instructions.md") {
-        sourceScope = "**";
+      } else if (
+        adapter === "copilot" &&
+        isCopilotRepositoryInstruction(path)
+      ) {
+        const repositoryScope = copilotRepositoryInstructionScope(path);
+        if (!repositoryScope) {
+          warnings.push(`Skipped ${path}: invalid Copilot repository scope.`);
+          continue;
+        }
+        sourceScope = repositoryScope;
+        extracted = scopeNestedCopilotRepositoryRules(
+          path,
+          extracted,
+          repositoryScope,
+          warnings,
+        );
       }
 
       rules.push(...extracted);

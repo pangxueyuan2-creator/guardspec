@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 describe("instruction source applicability", () => {
-  it("orders proven applicability by scope specificity without cross-agent precedence", async () => {
+  it("orders specific sources first without precedence metadata", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Run `pnpm test`.\n");
     await writeRepoFile(
@@ -113,7 +113,7 @@ describe("instruction source applicability", () => {
     );
   });
 
-  it("orders nested RuleRelay exact-name sources before repository-wide peers", async () => {
+  it("orders nested exact-name sources first", async () => {
     const root = await repository();
     for (const name of [
       "AGENTS.md",
@@ -229,7 +229,7 @@ describe("instruction source applicability", () => {
     },
   );
 
-  it("exposes deterministic specificity ordering through CLI JSON", async () => {
+  it("exposes specificity ordering through CLI JSON", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
     await writeRepoFile(

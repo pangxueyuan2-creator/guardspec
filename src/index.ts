@@ -22,6 +22,16 @@ export type {
   IndeterminateInstruction,
   InstructionApplicabilityReport,
 } from "./core/instruction-applicability.js";
+export { assessRuleRelayCompatibility } from "./core/rule-relay-compatibility.js";
+export type {
+  RuleRelayAdapter,
+  RuleRelayCompatibilityBlocker,
+  RuleRelayCompatibilityReport,
+  RuleRelayCompatibilityWarning,
+  RuleRelayExpandedSource,
+  RuleRelayExpectedSource,
+  RuleRelayMatchedSource,
+} from "./core/rule-relay-compatibility.js";
 export {
   adapterTarget,
   renderAdapter,

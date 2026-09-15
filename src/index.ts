@@ -36,6 +36,8 @@ export type {
   RuleRelayTargetExpandedSource,
   RuleRelayTargetMatchedSource,
 } from "./core/rule-relay-compatibility.js";
+export { auditRuleRelayLegacyInstructions } from "./core/rule-relay-check.js";
+export type { RuleRelayLegacyCheckReport } from "./core/rule-relay-check.js";
 export {
   adapterTarget,
   renderAdapter,

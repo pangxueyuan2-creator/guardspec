@@ -206,7 +206,6 @@ function rule(
 export function adapterForPath(path: string): SourceAdapter | undefined {
   if (
     path === "AGENTS.md" ||
-    path === "AGENTS.override.md" ||
     path.endsWith("/AGENTS.md") ||
     path.endsWith("/AGENTS.override.md")
   )

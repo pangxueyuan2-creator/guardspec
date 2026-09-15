@@ -75,6 +75,7 @@ describe("RuleRelay compatibility", () => {
     expect(report.schema).toBe("guardspec.dev/rule-relay-compatibility/v1");
     expect(report.ready).toBe(true);
     expect(report.blockers).toEqual([]);
+    expect(report.targetChecks).toEqual([]);
     expect(report.expectedSources.map((source) => source.path)).toEqual([
       ".cursorrules",
       ".github/copilot-instructions.md",
@@ -230,6 +231,137 @@ describe("RuleRelay compatibility", () => {
         }),
       ]),
     );
+  });
+
+  it("proves target-level parity for nested scopes and Copilot applyTo", async () => {
+    const root = await repository();
+    await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
+    await writeRepoFile(
+      root,
+      "packages/api/CLAUDE.md",
+      "Package API guidance.\n",
+    );
+    await writeRepoFile(
+      root,
+      ".github/copilot-instructions.md",
+      "Repository Copilot guidance.\n",
+    );
+    await writeRepoFile(
+      root,
+      ".github/instructions/api.instructions.md",
+      "---\napplyTo: packages/api/**/*.ts\n---\nAPI TypeScript guidance.\n",
+    );
+    await writeRepoFile(
+      root,
+      "packages/api/AGENTS.override.md",
+      "GuardSpec-only package override.\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root, [
+      "packages/web/src/app.ts",
+      "packages/api/src/server.ts",
+    ]);
+
+    expect(report.ready).toBe(true);
+    expect(report.blockers).toEqual([]);
+    expect(report.targetChecks.map((target) => target.target)).toEqual([
+      "packages/api/src/server.ts",
+      "packages/web/src/app.ts",
+    ]);
+
+    const api = report.targetChecks[0]!;
+    expect(api.expectedApplicableSources.map((source) => source.path)).toEqual([
+      ".github/copilot-instructions.md",
+      ".github/instructions/api.instructions.md",
+      "AGENTS.md",
+      "packages/api/CLAUDE.md",
+    ]);
+    expect(api.matchedApplicableSources.map((source) => source.path)).toEqual(
+      api.expectedApplicableSources.map((source) => source.path),
+    );
+    expect(api.expandedApplicableSources.map((source) => source.path)).toEqual([
+      "packages/api/AGENTS.override.md",
+    ]);
+
+    const web = report.targetChecks[1]!;
+    expect(web.expectedApplicableSources.map((source) => source.path)).toEqual([
+      ".github/copilot-instructions.md",
+      "AGENTS.md",
+    ]);
+    expect(web.matchedApplicableSources.map((source) => source.path)).toEqual(
+      web.expectedApplicableSources.map((source) => source.path),
+    );
+  });
+
+  it("fails closed when GuardSpec broadens a legacy Copilot glob", async () => {
+    const root = await repository();
+    await writeRepoFile(
+      root,
+      ".github/instructions/brackets.instructions.md",
+      "---\napplyTo: src/[ab].ts\n---\nLegacy bracket pattern.\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root, ["src/a.ts"]);
+
+    expect(report.ready).toBe(false);
+    expect(report.targetChecks).toHaveLength(1);
+    expect(report.targetChecks[0]!.expectedApplicableSources).toEqual([]);
+    expect(report.targetChecks[0]!.blockers).toEqual([
+      expect.objectContaining({
+        code: "LEGACY_TARGET_SCOPE_EXPANDED",
+        file: ".github/instructions/brackets.instructions.md",
+        target: "src/a.ts",
+      }),
+    ]);
+    expect(report.blockers).toEqual(report.targetChecks[0]!.blockers);
+  });
+
+  it("accepts repeatable CLI targets and emits deterministic target JSON", async () => {
+    const root = await repository();
+    await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
+    const output: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string) => {
+      output.push(chunk);
+      return true;
+    };
+
+    try {
+      await main([
+        "instructions",
+        "compatibility",
+        "rule-relay",
+        "--root",
+        root,
+        "--target",
+        "z/file.ts",
+        "--target",
+        "a/file.ts",
+        "--json",
+      ]);
+    } finally {
+      process.stdout.write = original;
+    }
+
+    expect(process.exitCode).toBe(0);
+    const report = JSON.parse(output.join("")) as {
+      ready: boolean;
+      targetChecks: Array<{ target: string; ready: boolean }>;
+    };
+    expect(report.ready).toBe(true);
+    expect(report.targetChecks).toEqual([
+      { target: "a/file.ts", ready: true, expectedApplicableSources: expect.any(Array), matchedApplicableSources: expect.any(Array), expandedApplicableSources: expect.any(Array), blockers: [] },
+      { target: "z/file.ts", ready: true, expectedApplicableSources: expect.any(Array), matchedApplicableSources: expect.any(Array), expandedApplicableSources: expect.any(Array), blockers: [] },
+    ]);
+  });
+
+  it("rejects unsafe compatibility targets through the explain boundary", async () => {
+    const root = await repository();
+    await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
+
+    await expect(
+      assessRuleRelayCompatibility(root, ["../outside.ts"]),
+    ).rejects.toThrow("must stay inside the repository");
   });
 
   it("exposes blockers as deterministic CLI JSON and a blocking exit code", async () => {

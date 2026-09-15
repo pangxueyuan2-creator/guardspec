@@ -1,4 +1,4 @@
-import { scanRepository } from "./scanner.js";
+import { scanRepository } from "./repository-scan.js";
 import type { DiscoveredSource, SourceAdapter } from "./types.js";
 
 const INSTRUCTION_ADAPTERS = new Set<SourceAdapter>([

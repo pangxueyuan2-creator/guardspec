@@ -1,9 +1,13 @@
-import { walkRepository } from "./fs-safe.js";
+import { posix } from "node:path";
+import { parseCopilotApplyTo } from "./copilot.js";
+import { safeRead, walkRepository } from "./fs-safe.js";
+import { explainInstructions } from "./instruction-applicability.js";
 import { auditInstructions } from "./instruction-hygiene.js";
 import { inventoryInstructions } from "./instruction-inventory.js";
 import type { SourceAdapter } from "./types.js";
 
 const SCHEMA = "guardspec.dev/rule-relay-compatibility/v1" as const;
+const MAX_TARGETS = 64;
 
 export type RuleRelayAdapter =
   "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
@@ -23,11 +27,19 @@ export interface RuleRelayExpandedSource {
   scope: string;
 }
 
+export type RuleRelayCompatibilityBlockerCode =
+  | "MISSING_RULE_RELAY_SOURCE"
+  | "LEGACY_SOURCE_HYGIENE_ERROR"
+  | "LEGACY_TARGET_SOURCE_NOT_APPLICABLE"
+  | "LEGACY_TARGET_SOURCE_INDETERMINATE"
+  | "LEGACY_TARGET_SCOPE_EXPANDED";
+
 export interface RuleRelayCompatibilityBlocker {
-  code: "MISSING_RULE_RELAY_SOURCE" | "LEGACY_SOURCE_HYGIENE_ERROR";
+  code: RuleRelayCompatibilityBlockerCode;
   file: string;
   message: string;
   detail?: string;
+  target?: string;
 }
 
 export interface RuleRelayCompatibilityWarning {
@@ -37,6 +49,25 @@ export interface RuleRelayCompatibilityWarning {
   detail?: string;
 }
 
+export interface RuleRelayTargetMatchedSource extends RuleRelayExpectedSource {
+  matchedScopes: string[];
+}
+
+export interface RuleRelayTargetExpandedSource {
+  path: string;
+  adapter: SourceAdapter;
+  matchedScopes: string[];
+}
+
+export interface RuleRelayTargetCompatibility {
+  target: string;
+  ready: boolean;
+  expectedApplicableSources: RuleRelayExpectedSource[];
+  matchedApplicableSources: RuleRelayTargetMatchedSource[];
+  expandedApplicableSources: RuleRelayTargetExpandedSource[];
+  blockers: RuleRelayCompatibilityBlocker[];
+}
+
 export interface RuleRelayCompatibilityReport {
   schema: typeof SCHEMA;
   root: string;
@@ -44,6 +75,7 @@ export interface RuleRelayCompatibilityReport {
   expectedSources: RuleRelayExpectedSource[];
   matchedSources: RuleRelayMatchedSource[];
   expandedSources: RuleRelayExpandedSource[];
+  targetChecks: RuleRelayTargetCompatibility[];
   blockers: RuleRelayCompatibilityBlocker[];
   warnings: RuleRelayCompatibilityWarning[];
   scanWarnings: string[];
@@ -103,16 +135,188 @@ function compareByPathAndAdapter(
 }
 
 function compareFinding(
-  left: { file: string; code: string },
-  right: { file: string; code: string },
+  left: { file: string; code: string; target?: string },
+  right: { file: string; code: string; target?: string },
 ): number {
   return (
-    left.file.localeCompare(right.file) || left.code.localeCompare(right.code)
+    (left.target ?? "").localeCompare(right.target ?? "") ||
+    left.file.localeCompare(right.file) ||
+    left.code.localeCompare(right.code)
   );
+}
+
+function directoryScope(path: string): string {
+  const directory = posix.dirname(path);
+  return directory === "." ? "." : directory;
+}
+
+function isInside(target: string, directory: string): boolean {
+  return (
+    directory === "." ||
+    target === directory ||
+    target.startsWith(`${directory}/`)
+  );
+}
+
+function copilotRepositoryOwner(path: string): string {
+  const suffix = ".github/copilot-instructions.md";
+  const owner = path.slice(0, path.length - suffix.length).replace(/\/$/, "");
+  return owner || ".";
+}
+
+function regexEscape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function ruleRelayGlobExpression(pattern: string): RegExp {
+  let source = "";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "*") {
+      let end = index;
+      while (pattern[end + 1] === "*") end += 1;
+      const recursive = end > index;
+      index = end;
+      if (recursive && pattern[index + 1] === "/") {
+        source += "(?:.*/)?";
+        index += 1;
+      } else {
+        source += recursive ? ".*" : "[^/]*";
+      }
+      continue;
+    }
+    if (character === "?") {
+      source += "[^/]";
+      continue;
+    }
+    source += regexEscape(character ?? "");
+  }
+  return new RegExp(`^${source}$`);
+}
+
+async function ruleRelayAppliesToTarget(
+  root: string,
+  source: RuleRelayExpectedSource,
+  target: string,
+): Promise<boolean> {
+  if (source.adapter !== "copilot") {
+    return isInside(target, directoryScope(source.path));
+  }
+
+  if (isRuleRelayCopilotRepositoryInstruction(source.path)) {
+    return isInside(target, copilotRepositoryOwner(source.path));
+  }
+  if (!isRuleRelayCopilotPathInstruction(source.path)) return false;
+
+  let content: string;
+  try {
+    content = await safeRead(root, source.path);
+  } catch {
+    return false;
+  }
+  const parsed = parseCopilotApplyTo(content);
+  if (!parsed.ok) return false;
+  return parsed.patterns.some((pattern) =>
+    ruleRelayGlobExpression(pattern).test(target),
+  );
+}
+
+async function assessTargetCompatibility(
+  root: string,
+  rawTarget: string,
+  expectedSources: readonly RuleRelayExpectedSource[],
+): Promise<RuleRelayTargetCompatibility> {
+  const guardSpec = await explainInstructions(root, rawTarget);
+  const target = guardSpec.target;
+  const expectedByPath = new Map(
+    expectedSources.map((source) => [source.path, source] as const),
+  );
+  const expectedApplicableSources: RuleRelayExpectedSource[] = [];
+  for (const source of expectedSources) {
+    if (await ruleRelayAppliesToTarget(root, source, target)) {
+      expectedApplicableSources.push(source);
+    }
+  }
+  expectedApplicableSources.sort(compareByPathAndAdapter);
+  const expectedApplicableByPath = new Map(
+    expectedApplicableSources.map((source) => [source.path, source] as const),
+  );
+  const guardApplicableByPath = new Map(
+    guardSpec.applicable.map((source) => [source.path, source] as const),
+  );
+  const guardIndeterminateByPath = new Map(
+    guardSpec.indeterminate.map((source) => [source.path, source] as const),
+  );
+
+  const blockers: RuleRelayCompatibilityBlocker[] = [];
+  const matchedApplicableSources: RuleRelayTargetMatchedSource[] = [];
+  for (const expected of expectedApplicableSources) {
+    const indeterminate = guardIndeterminateByPath.get(expected.path);
+    if (indeterminate) {
+      blockers.push({
+        code: "LEGACY_TARGET_SOURCE_INDETERMINATE",
+        file: expected.path,
+        target,
+        message:
+          "RuleRelay would apply this legacy instruction to the target, but GuardSpec cannot prove its applicability.",
+        detail: indeterminate.reason,
+      });
+      continue;
+    }
+    const applicable = guardApplicableByPath.get(expected.path);
+    if (!applicable || applicable.adapter !== expected.adapter) {
+      blockers.push({
+        code: "LEGACY_TARGET_SOURCE_NOT_APPLICABLE",
+        file: expected.path,
+        target,
+        message:
+          "RuleRelay would apply this legacy instruction to the target, but GuardSpec did not apply the same adapter family.",
+      });
+      continue;
+    }
+    matchedApplicableSources.push({
+      ...expected,
+      matchedScopes: [...applicable.matchedScopes],
+    });
+  }
+
+  for (const applicable of guardSpec.applicable) {
+    const legacy = expectedByPath.get(applicable.path);
+    if (!legacy || expectedApplicableByPath.has(applicable.path)) continue;
+    blockers.push({
+      code: "LEGACY_TARGET_SCOPE_EXPANDED",
+      file: applicable.path,
+      target,
+      message:
+        "GuardSpec applies this legacy RuleRelay source to the target, but RuleRelay would not; migration would broaden the legacy rule scope.",
+      detail: `GuardSpec matched: ${applicable.matchedScopes.join(", ")}`,
+    });
+  }
+
+  const expandedApplicableSources = guardSpec.applicable
+    .filter((source) => !expectedByPath.has(source.path))
+    .map((source) => ({
+      path: source.path,
+      adapter: source.adapter,
+      matchedScopes: [...source.matchedScopes],
+    }))
+    .sort(compareByPathAndAdapter);
+
+  blockers.sort(compareFinding);
+  matchedApplicableSources.sort(compareByPathAndAdapter);
+  return {
+    target,
+    ready: blockers.length === 0,
+    expectedApplicableSources,
+    matchedApplicableSources,
+    expandedApplicableSources,
+    blockers,
+  };
 }
 
 export async function assessRuleRelayCompatibility(
   root: string,
+  rawTargets: readonly string[] = [],
 ): Promise<RuleRelayCompatibilityReport> {
   const repositoryFiles = await walkRepository(root);
   const expectedSources = repositoryFiles
@@ -162,6 +366,23 @@ export async function assessRuleRelayCompatibility(
     }
   }
 
+  const uniqueTargets = [...new Set(rawTargets)];
+  if (uniqueTargets.length > MAX_TARGETS) {
+    throw new Error(
+      `RuleRelay compatibility accepts at most ${MAX_TARGETS} unique targets per run.`,
+    );
+  }
+  const targetChecks: RuleRelayTargetCompatibility[] = [];
+  for (const rawTarget of uniqueTargets) {
+    targetChecks.push(
+      await assessTargetCompatibility(root, rawTarget, expectedSources),
+    );
+  }
+  targetChecks.sort((left, right) => left.target.localeCompare(right.target));
+  for (const targetCheck of targetChecks) {
+    blockers.push(...targetCheck.blockers);
+  }
+
   const expandedSources = inventory.sources
     .filter((source) => !expectedByPath.has(source.path))
     .map((source) => ({
@@ -191,6 +412,7 @@ export async function assessRuleRelayCompatibility(
     expectedSources,
     matchedSources,
     expandedSources,
+    targetChecks,
     blockers,
     warnings,
     scanWarnings: [...inventory.warnings].sort(),

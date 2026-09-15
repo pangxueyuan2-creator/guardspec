@@ -26,11 +26,15 @@ export { assessRuleRelayCompatibility } from "./core/rule-relay-compatibility.js
 export type {
   RuleRelayAdapter,
   RuleRelayCompatibilityBlocker,
+  RuleRelayCompatibilityBlockerCode,
   RuleRelayCompatibilityReport,
   RuleRelayCompatibilityWarning,
   RuleRelayExpandedSource,
   RuleRelayExpectedSource,
   RuleRelayMatchedSource,
+  RuleRelayTargetCompatibility,
+  RuleRelayTargetExpandedSource,
+  RuleRelayTargetMatchedSource,
 } from "./core/rule-relay-compatibility.js";
 export {
   adapterTarget,

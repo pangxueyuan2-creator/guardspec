@@ -41,11 +41,7 @@ describe("RuleRelay compatibility", () => {
       "packages/api/CLAUDE.md",
       "Keep API edits focused.\n",
     );
-    await writeRepoFile(
-      root,
-      "GEMINI.md",
-      "Use repository-local context.\n",
-    );
+    await writeRepoFile(root, "GEMINI.md", "Use repository-local context.\n");
     await writeRepoFile(
       root,
       ".cursorrules",

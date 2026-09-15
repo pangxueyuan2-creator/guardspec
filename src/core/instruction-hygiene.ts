@@ -274,7 +274,9 @@ async function nearestPackageManifest(
   }
 }
 
-function packageScriptReference(value: string): PackageScriptReference | undefined {
+function packageScriptReference(
+  value: string,
+): PackageScriptReference | undefined {
   const explicit = explicitPackageRun.exec(value)?.[1];
   if (explicit) {
     return { scriptName: explicit, allowServerFallback: false };

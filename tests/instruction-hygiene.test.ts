@@ -176,7 +176,7 @@ describe("instruction hygiene audit", () => {
 
     await withTempRepository(async (root) => {
       await writeRepoFile(root, "real-instructions.md", "Do not modify secrets/**.\n");
-      await writeRepoFile(root, "real-rules/AGENTS.md", "Run `npm run hidden`.\n");
+      await writeRepoFile(root, "real-rules/hidden.md", "Not directly discoverable.\n");
       await symlink("real-instructions.md", join(root, "AGENTS.md"), "file");
       await symlink("real-instructions.md", join(root, "notes-link.md"), "file");
       await symlink("real-rules", join(root, "linked-rules"), "dir");

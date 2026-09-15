@@ -128,6 +128,61 @@ describe("instruction hygiene audit", () => {
     });
   });
 
+  it("validates safe npm lifecycle shorthands without treating built-ins as scripts", async () => {
+    await withTempRepository(async (root) => {
+      await writeRepoFile(
+        root,
+        "package.json",
+        JSON.stringify({ scripts: { test: "vitest run" } }),
+      );
+      await writeRepoFile(root, "server.js", "console.log('start');\n");
+      await writeRepoFile(
+        root,
+        "AGENTS.md",
+        [
+          "Before review, run `npm test`.",
+          "For a local smoke test, run `npm start`.",
+          "Install dependencies with `npm install`.",
+        ].join("\n"),
+      );
+
+      const report = await auditInstructions(root);
+      expect(report.valid).toBe(true);
+      expect(report.findings).toEqual([]);
+    });
+  });
+
+  it("fails closed when an npm test shorthand is missing from the nearest package", async () => {
+    await withTempRepository(async (root) => {
+      await writeRepoFile(
+        root,
+        "package.json",
+        JSON.stringify({ scripts: { test: "echo root" } }),
+      );
+      await writeRepoFile(
+        root,
+        "packages/api/package.json",
+        JSON.stringify({ scripts: { lint: "eslint ." } }),
+      );
+      await writeRepoFile(
+        root,
+        "packages/api/AGENTS.md",
+        "Before review, run `npm test`.\n",
+      );
+
+      const report = await auditInstructions(root);
+      expect(report.valid).toBe(false);
+      expect(report.findings).toEqual([
+        expect.objectContaining({
+          code: "MISSING_PACKAGE_SCRIPT",
+          file: "packages/api/AGENTS.md",
+          message: "Referenced package script is not declared: test",
+          detail: "Command: npm test",
+        }),
+      ]);
+    });
+  });
+
   it("reports deterministic duplicate warnings and lets strict mode promote warnings to failure", async () => {
     await withTempRepository(async (root) => {
       await writeRepoFile(root, "AGENTS.md", "Shared guidance.\n");

@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 describe("instruction source applicability", () => {
-  it("explains proven source applicability without cross-agent precedence", async () => {
+  it("orders specific sources first without precedence metadata", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Run `pnpm test`.\n");
     await writeRepoFile(
@@ -81,6 +81,10 @@ describe("instruction source applicability", () => {
       "packages/api/src/server.ts",
     );
     const paths = report.applicable.map((entry) => entry.path);
+    expect(paths.slice(0, 2)).toEqual([
+      "packages/api/AGENTS.md",
+      ".github/instructions/typescript.instructions.md",
+    ]);
     expect(paths).toEqual(
       expect.arrayContaining([
         ".cursorrules",
@@ -109,6 +113,59 @@ describe("instruction source applicability", () => {
     );
   });
 
+  it("orders nested exact-name sources first", async () => {
+    const root = await repository();
+    for (const name of [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "GEMINI.md",
+      ".cursorrules",
+    ]) {
+      await writeRepoFile(root, name, `Root ${name} guidance.\n`);
+      await writeRepoFile(
+        root,
+        `packages/api/${name}`,
+        `Package ${name} guidance.\n`,
+      );
+    }
+    await writeRepoFile(
+      root,
+      ".github/copilot-instructions.md",
+      "Repository Copilot guidance.\n",
+    );
+    await writeRepoFile(
+      root,
+      ".github/instructions/api.instructions.md",
+      [
+        "---",
+        'applyTo: "packages/api/**/*.ts"',
+        "---",
+        "Package Copilot guidance.",
+      ].join("\n"),
+    );
+
+    const report = await explainInstructions(
+      root,
+      "packages/api/src/server.ts",
+    );
+
+    expect(report.applicable.map((entry) => entry.path)).toEqual([
+      "packages/api/AGENTS.md",
+      "packages/api/CLAUDE.md",
+      ".github/instructions/api.instructions.md",
+      "packages/api/.cursorrules",
+      "packages/api/GEMINI.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".github/copilot-instructions.md",
+      ".cursorrules",
+      "GEMINI.md",
+    ]);
+    expect(report.applicable.every((entry) => !("precedence" in entry))).toBe(
+      true,
+    );
+  });
+
   it("composes root and nested Copilot repository scopes for sibling targets", async () => {
     const root = await repository();
     await writeRepoFile(
@@ -129,14 +186,14 @@ describe("instruction source applicability", () => {
 
     const api = await explainInstructions(root, "packages/api/src/server.ts");
     expect(api.applicable.map((entry) => entry.path)).toEqual([
-      ".github/copilot-instructions.md",
       "packages/api/.github/copilot-instructions.md",
+      ".github/copilot-instructions.md",
     ]);
 
     const web = await explainInstructions(root, "packages/web/src/page.ts");
     expect(web.applicable.map((entry) => entry.path)).toEqual([
-      ".github/copilot-instructions.md",
       "packages/web/.github/copilot-instructions.md",
+      ".github/copilot-instructions.md",
     ]);
   });
 
@@ -172,9 +229,10 @@ describe("instruction source applicability", () => {
     },
   );
 
-  it("exposes deterministic JSON through the CLI", async () => {
+  it("exposes specificity ordering through CLI JSON", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Repository guidance.\n");
+    await writeRepoFile(root, "packages/api/AGENTS.md", "Package guidance.\n");
     const output: string[] = [];
     const original = process.stdout.write.bind(process.stdout);
     process.stdout.write = (chunk: string) => {
@@ -186,7 +244,7 @@ describe("instruction source applicability", () => {
       await main([
         "instructions",
         "explain",
-        "src/app.ts",
+        "packages/api/src/app.ts",
         "--root",
         root,
         "--json",
@@ -200,7 +258,10 @@ describe("instruction source applicability", () => {
       target: string;
       applicable: Array<{ path: string }>;
     };
-    expect(report.target).toBe("src/app.ts");
-    expect(report.applicable.map((entry) => entry.path)).toEqual(["AGENTS.md"]);
+    expect(report.target).toBe("packages/api/src/app.ts");
+    expect(report.applicable.map((entry) => entry.path)).toEqual([
+      "packages/api/AGENTS.md",
+      "AGENTS.md",
+    ]);
   });
 });

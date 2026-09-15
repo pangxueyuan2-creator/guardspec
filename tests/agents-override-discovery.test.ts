@@ -113,8 +113,8 @@ describe("AGENTS.override.md discovery", () => {
 
     const api = await explainInstructions(root, "packages/api/src/server.ts");
     expect(api.applicable.map((entry) => entry.path)).toEqual([
-      "AGENTS.override.md",
       "packages/api/AGENTS.override.md",
+      "AGENTS.override.md",
     ]);
 
     const web = await explainInstructions(root, "packages/web/src/page.ts");

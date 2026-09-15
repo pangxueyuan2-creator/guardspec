@@ -1,5 +1,7 @@
 const PATH_SPECIFIC_INSTRUCTION =
   /(^|\/)\.github\/instructions\/.+\.instructions\.md$/i;
+const REPOSITORY_INSTRUCTION = /(^|\/)\.github\/copilot-instructions\.md$/i;
+const REPOSITORY_INSTRUCTION_SUFFIX = ".github/copilot-instructions.md";
 const MAX_PATTERNS = 64;
 const MAX_PATTERN_LENGTH = 512;
 
@@ -16,6 +18,22 @@ function normalizePath(value: string): string {
 
 export function isCopilotPathInstruction(relativePath: string): boolean {
   return PATH_SPECIFIC_INSTRUCTION.test(normalizePath(relativePath));
+}
+
+export function isCopilotRepositoryInstruction(relativePath: string): boolean {
+  return REPOSITORY_INSTRUCTION.test(normalizePath(relativePath));
+}
+
+export function copilotRepositoryInstructionScope(
+  relativePath: string,
+): string | undefined {
+  const normalized = normalizePath(relativePath);
+  if (!isCopilotRepositoryInstruction(normalized)) return undefined;
+
+  const owner = normalized
+    .slice(0, normalized.length - REPOSITORY_INSTRUCTION_SUFFIX.length)
+    .replace(/\/$/, "");
+  return owner ? `${owner}/**` : "**";
 }
 
 function scalarValue(rawValue: string): ScalarResult {

@@ -86,14 +86,18 @@ export function evaluate(
   );
   const hasAllow = applicable.some((rule) => rule.effect === "allow");
   const hasDeny = applicable.some((rule) => rule.effect === "deny");
-  const requiredChecks = policy.rules
-    .filter(
-      (rule) =>
-        rule.kind === "check" &&
-        rule.effect === "require" &&
-        matches(rule, target),
-    )
-    .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : []));
+  const requiredChecks = [
+    ...new Set(
+      policy.rules
+        .filter(
+          (rule) =>
+            rule.kind === "check" &&
+            rule.effect === "require" &&
+            matches(rule, target),
+        )
+        .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : [])),
+    ),
+  ];
   const approvalRequired = policy.rules.some(
     (rule) =>
       rule.kind === "approval" &&

@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { scanRepository } from "./core/scanner.js";
+import { scanRepository } from "./core/repository-scan.js";
 import { auditInstructions } from "./core/instruction-hygiene.js";
 import { inventoryInstructions } from "./core/instruction-inventory.js";
 import { explainInstructions } from "./core/instruction-applicability.js";

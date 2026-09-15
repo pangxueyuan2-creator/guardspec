@@ -32,6 +32,12 @@
     "node": ">=20"
   },
   "packageManager": "pnpm@10.22.0",
+  "pnpm": {
+    "overrides": {
+      "hono": "^4.13.5",
+      "qs": "^6.16.0"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "pnpm build",

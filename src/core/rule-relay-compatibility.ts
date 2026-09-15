@@ -91,7 +91,9 @@ function compareFinding(
   left: { file: string; code: string },
   right: { file: string; code: string },
 ): number {
-  return left.file.localeCompare(right.file) || left.code.localeCompare(right.code);
+  return (
+    left.file.localeCompare(right.file) || left.code.localeCompare(right.code)
+  );
 }
 
 export async function assessRuleRelayCompatibility(
@@ -135,10 +137,7 @@ export async function assessRuleRelayCompatibility(
   }
 
   for (const finding of audit.findings) {
-    if (
-      finding.severity === "error" &&
-      expectedByPath.has(finding.file)
-    ) {
+    if (finding.severity === "error" && expectedByPath.has(finding.file)) {
       blockers.push({
         code: "LEGACY_SOURCE_HYGIENE_ERROR",
         file: finding.file,

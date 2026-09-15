@@ -1,12 +1,13 @@
 import { posix } from "node:path";
 import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
-import {
-  safeRead,
-  walkRepositoryDetailed,
-  type RepositorySymlink,
-} from "./fs-safe.js";
+import { safeRead, walkRepository } from "./fs-safe.js";
 import { adapterForPath } from "./extract.js";
 import { scanRepository } from "./scanner.js";
+import {
+  inspectRepositorySymlinks,
+  MAX_SYMLINK_DIAGNOSTICS,
+  type RepositorySymlink,
+} from "./symlink-diagnostics.js";
 import type { DiscoveredSource, SourceAdapter } from "./types.js";
 
 export type InstructionFindingCode =
@@ -14,6 +15,7 @@ export type InstructionFindingCode =
   | "DUPLICATE_INSTRUCTION"
   | "INVALID_COPILOT_APPLY_TO"
   | "MISSING_PACKAGE_SCRIPT"
+  | "SYMLINK_DIAGNOSTICS_TRUNCATED"
   | "SYMLINKED_INSTRUCTION_SOURCE"
   | "UNSAFE_LOCAL_LINK";
 
@@ -303,8 +305,8 @@ export async function auditInstructions(
   root: string,
 ): Promise<InstructionAuditReport> {
   const scan = await scanRepository(root);
-  const walk = await walkRepositoryDetailed(root);
-  const repositoryFiles = new Set(walk.files);
+  const repositoryFiles = new Set(await walkRepository(root));
+  const symlinkReport = await inspectRepositorySymlinks(root);
   const files: LoadedInstruction[] = [];
   for (const source of scan.sources.filter(isAgentInstructionSource)) {
     try {
@@ -316,7 +318,17 @@ export async function auditInstructions(
 
   const findings: InstructionFinding[] = [];
   pushDuplicateFindings(files, findings);
-  for (const symlink of walk.symlinks) pushSymlinkFinding(symlink, findings);
+  for (const symlink of symlinkReport.symlinks) {
+    pushSymlinkFinding(symlink, findings);
+  }
+  if (symlinkReport.truncated) {
+    findings.push({
+      code: "SYMLINK_DIAGNOSTICS_TRUNCATED",
+      severity: "warning",
+      message: `Symlink diagnostics were truncated after ${MAX_SYMLINK_DIAGNOSTICS} entries; strict instruction hygiene cannot prove that additional symlinks are irrelevant.`,
+      file: ".",
+    });
+  }
   for (const file of files) {
     pushCopilotApplyToFinding(file, findings);
     pushLinkFindings(file, repositoryFiles, findings);

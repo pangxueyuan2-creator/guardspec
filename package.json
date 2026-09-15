@@ -13,7 +13,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "guardspec": "./dist/cli.js"
+    "guardspec": "./dist/bin.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

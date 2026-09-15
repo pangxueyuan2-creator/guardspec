@@ -10,11 +10,7 @@ const SCHEMA = "guardspec.dev/rule-relay-compatibility/v1" as const;
 const MAX_TARGETS = 64;
 
 export type RuleRelayAdapter =
-  | "agents-md"
-  | "claude"
-  | "copilot"
-  | "cursor"
-  | "gemini";
+  "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
 
 export interface RuleRelayExpectedSource {
   path: string;
@@ -164,9 +160,7 @@ function isInside(target: string, directory: string): boolean {
 
 function copilotRepositoryOwner(path: string): string {
   const suffix = ".github/copilot-instructions.md";
-  const owner = path
-    .slice(0, path.length - suffix.length)
-    .replace(/\/$/, "");
+  const owner = path.slice(0, path.length - suffix.length).replace(/\/$/, "");
   return owner || ".";
 }
 

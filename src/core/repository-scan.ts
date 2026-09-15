@@ -27,7 +27,9 @@ function sortedRules(rules: readonly PolicyRule[]): PolicyRule[] {
   return [...rules].sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function ruleRelayExactAdapterFor(relativePath: string): SourceAdapter | undefined {
+function ruleRelayExactAdapterFor(
+  relativePath: string,
+): SourceAdapter | undefined {
   return RULE_RELAY_EXACT_ADAPTERS.get(basename(relativePath).toLowerCase());
 }
 

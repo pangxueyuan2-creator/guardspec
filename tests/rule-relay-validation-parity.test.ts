@@ -154,6 +154,77 @@ describe("RuleRelay validation parity", () => {
     );
   });
 
+  it("reproduces repository-bounded legacy local-link findings", async () => {
+    const root = await repository();
+    await writeRepoFile(root, "docs/guide.md", "# Guide\n");
+    await writeRepoFile(
+      root,
+      "AGENTS.md",
+      [
+        "Read the [guide](docs/guide.md).",
+        "The [docs directory](docs) is also valid.",
+        "Do not trust a [missing page](docs/missing.md).",
+        "Never follow [outside](../outside.md).",
+      ].join("\n"),
+    );
+
+    const report = await assessRuleRelayCompatibility(root);
+
+    expect(report.validation.expectedFindings).toEqual([
+      {
+        code: "DEAD_LOCAL_LINK",
+        severity: "error",
+        file: "AGENTS.md",
+      },
+      {
+        code: "UNSAFE_LOCAL_LINK",
+        severity: "error",
+        file: "AGENTS.md",
+      },
+    ]);
+    expect(report.validation.matchedFindings).toEqual(
+      report.validation.expectedFindings,
+    );
+    expect(report.validation.missingFindings).toEqual([]);
+    expect(report.blockers).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED",
+        }),
+      ]),
+    );
+  });
+
+  it("fails closed when RuleRelay treats another URI scheme as a local link", async () => {
+    const root = await repository();
+    await writeRepoFile(
+      root,
+      "AGENTS.md",
+      "Inspect the [local artifact](file:missing.md) before release.\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root);
+
+    expect(report.validation.expectedFindings).toEqual([
+      {
+        code: "DEAD_LOCAL_LINK",
+        severity: "error",
+        file: "AGENTS.md",
+      },
+    ]);
+    expect(report.validation.matchedFindings).toEqual([]);
+    expect(report.validation.missingFindings).toEqual(
+      report.validation.expectedFindings,
+    );
+    expect(report.blockers).toEqual([
+      expect.objectContaining({
+        code: "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED",
+        file: "AGENTS.md",
+        detail: "error DEAD_LOCAL_LINK",
+      }),
+    ]);
+  });
+
   it("exposes validation parity blockers through CLI JSON and exit status", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Run `pnpm test`.\n");

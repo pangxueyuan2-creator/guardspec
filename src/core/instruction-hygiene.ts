@@ -1,14 +1,22 @@
 import { posix } from "node:path";
 import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead, walkRepository } from "./fs-safe.js";
+import { adapterForPath } from "./extract.js";
 import { scanRepository } from "./scanner.js";
-import type { DiscoveredSource } from "./types.js";
+import {
+  inspectRepositorySymlinks,
+  MAX_SYMLINK_DIAGNOSTICS,
+  type RepositorySymlink,
+} from "./symlink-diagnostics.js";
+import type { DiscoveredSource, SourceAdapter } from "./types.js";
 
 export type InstructionFindingCode =
   | "DEAD_LOCAL_LINK"
   | "DUPLICATE_INSTRUCTION"
   | "INVALID_COPILOT_APPLY_TO"
   | "MISSING_PACKAGE_SCRIPT"
+  | "SYMLINK_DIAGNOSTICS_TRUNCATED"
+  | "SYMLINKED_INSTRUCTION_SOURCE"
   | "UNSAFE_LOCAL_LINK";
 
 export interface InstructionFinding {
@@ -42,16 +50,23 @@ const inlineCode = /`([^`\n]+)`/g;
 const explicitPackageRun =
   /^(?:npm|pnpm|yarn|bun)\s+run\s+([a-zA-Z0-9:_-]+)(?:\s|$)/;
 const uriScheme = /^[a-z][a-z0-9+.-]*:/i;
+const INSTRUCTION_ADAPTERS = new Set<SourceAdapter>([
+  "agents-md",
+  "claude",
+  "copilot",
+  "cursor",
+  "gemini",
+  "opencode",
+]);
+
+function isAgentInstructionAdapter(
+  adapter: SourceAdapter | undefined,
+): boolean {
+  return adapter !== undefined && INSTRUCTION_ADAPTERS.has(adapter);
+}
 
 function isAgentInstructionSource(source: DiscoveredSource): boolean {
-  return (
-    source.adapter === "agents-md" ||
-    source.adapter === "claude" ||
-    source.adapter === "copilot" ||
-    source.adapter === "cursor" ||
-    source.adapter === "gemini" ||
-    source.adapter === "opencode"
-  );
+  return isAgentInstructionAdapter(source.adapter);
 }
 
 function normalizeContent(content: string): string {
@@ -107,6 +122,26 @@ function pushCopilotApplyToFinding(
       "Path-specific Copilot instructions have invalid applyTo metadata.",
     file: file.source.path,
     detail: parsed.error,
+  });
+}
+
+function pushSymlinkFinding(
+  symlink: RepositorySymlink,
+  findings: InstructionFinding[],
+): void {
+  if (
+    symlink.kind === "directory" ||
+    !isAgentInstructionAdapter(adapterForPath(symlink.path))
+  ) {
+    return;
+  }
+  findings.push({
+    code: "SYMLINKED_INSTRUCTION_SOURCE",
+    severity: "warning",
+    message:
+      "Symlinked instruction source is not read; replace it with a regular reviewed file if it should participate in GuardSpec policy discovery.",
+    file: symlink.path,
+    ...(symlink.target ? { detail: `Target: ${symlink.target}` } : {}),
   });
 }
 
@@ -271,6 +306,7 @@ export async function auditInstructions(
 ): Promise<InstructionAuditReport> {
   const scan = await scanRepository(root);
   const repositoryFiles = new Set(await walkRepository(root));
+  const symlinkReport = await inspectRepositorySymlinks(root);
   const files: LoadedInstruction[] = [];
   for (const source of scan.sources.filter(isAgentInstructionSource)) {
     try {
@@ -282,6 +318,17 @@ export async function auditInstructions(
 
   const findings: InstructionFinding[] = [];
   pushDuplicateFindings(files, findings);
+  for (const symlink of symlinkReport.symlinks) {
+    pushSymlinkFinding(symlink, findings);
+  }
+  if (symlinkReport.truncated) {
+    findings.push({
+      code: "SYMLINK_DIAGNOSTICS_TRUNCATED",
+      severity: "warning",
+      message: `Symlink diagnostics were truncated after ${MAX_SYMLINK_DIAGNOSTICS} entries; strict instruction hygiene cannot prove that additional symlinks are irrelevant.`,
+      file: ".",
+    });
+  }
   for (const file of files) {
     pushCopilotApplyToFinding(file, findings);
     pushLinkFindings(file, repositoryFiles, findings);

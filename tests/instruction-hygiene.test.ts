@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -167,6 +167,50 @@ describe("instruction hygiene audit", () => {
       } finally {
         process.stdout.write = original;
       }
+    });
+  });
+
+  it("surfaces symlinked instruction sources without traversing or reading them", async () => {
+    if (process.platform === "win32") return;
+
+    await withTempRepository(async (root) => {
+      await writeRepoFile(
+        root,
+        "real-instructions.md",
+        "Do not modify secrets/**.\n",
+      );
+      await writeRepoFile(
+        root,
+        "real-rules/hidden.md",
+        "Not directly discoverable.\n",
+      );
+      await symlink("real-instructions.md", join(root, "AGENTS.md"), "file");
+      await symlink(
+        "real-instructions.md",
+        join(root, "notes-link.md"),
+        "file",
+      );
+      await symlink("real-rules", join(root, "linked-rules"), "dir");
+
+      const report = await auditInstructions(root);
+      expect(report.valid).toBe(true);
+      expect(report.errors).toBe(0);
+      expect(report.warnings).toBe(1);
+      expect(report.findings).toEqual([
+        expect.objectContaining({
+          code: "SYMLINKED_INSTRUCTION_SOURCE",
+          severity: "warning",
+          file: "AGENTS.md",
+          detail: "Target: real-instructions.md",
+        }),
+      ]);
+
+      process.exitCode = undefined;
+      await main(["instructions", "check", "--root", root]);
+      expect(process.exitCode).toBe(0);
+      process.exitCode = undefined;
+      await main(["instructions", "check", "--root", root, "--strict"]);
+      expect(process.exitCode).toBe(4);
     });
   });
 });

@@ -34,8 +34,8 @@
   "packageManager": "pnpm@10.22.0",
   "pnpm": {
     "overrides": {
-      "hono": "^4.13.5",
-      "qs": "^6.16.0"
+      "hono": "4.13.5",
+      "qs": "6.16.0"
     }
   },
   "scripts": {

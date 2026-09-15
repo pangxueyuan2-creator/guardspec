@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead, walkRepository } from "./fs-safe.js";
 import { adapterForPath } from "./extract.js";
-import { scanRepository } from "./scanner.js";
+import { scanRepository } from "./repository-scan.js";
 import {
   inspectRepositorySymlinks,
   MAX_SYMLINK_DIAGNOSTICS,

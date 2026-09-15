@@ -91,46 +91,122 @@ describe("RuleRelay compatibility", () => {
     expect(report.replacementCommands.strictCheck).toContain("--strict");
   });
 
-  it("fails closed when RuleRelay discovers a nested legacy source GuardSpec does not yet classify", async () => {
+  it("proves nested RuleRelay exact-name sources with directory scopes", async () => {
     const root = await repository();
     await writeRepoFile(
       root,
       "packages/api/CLAUDE.md",
       "Keep API edits focused.\n",
     );
+    await writeRepoFile(
+      root,
+      "packages/api/GEMINI.md",
+      "Use package-local context.\n",
+    );
+    await writeRepoFile(
+      root,
+      "packages/api/.cursorrules",
+      "Review package changes before commit.\n",
+    );
 
     const report = await assessRuleRelayCompatibility(root);
 
-    expect(report.ready).toBe(false);
-    expect(report.expectedSources).toEqual([
-      { path: "packages/api/CLAUDE.md", adapter: "claude" },
-    ]);
-    expect(report.blockers).toEqual([
-      expect.objectContaining({
-        code: "MISSING_RULE_RELAY_SOURCE",
-        file: "packages/api/CLAUDE.md",
-      }),
-    ]);
+    expect(report.ready).toBe(true);
+    expect(report.blockers).toEqual([]);
+    expect(report.expectedSources).toHaveLength(3);
+    expect(report.matchedSources).toEqual(
+      expect.arrayContaining([
+        {
+          path: "packages/api/CLAUDE.md",
+          adapter: "claude",
+          scope: "packages/api/**",
+        },
+        {
+          path: "packages/api/GEMINI.md",
+          adapter: "gemini",
+          scope: "packages/api/**",
+        },
+        {
+          path: "packages/api/.cursorrules",
+          adapter: "cursor",
+          scope: "packages/api/**",
+        },
+      ]),
+    );
   });
 
-  it("fails closed when GuardSpec misses a case-insensitive legacy source", async () => {
+  it("proves case-insensitive RuleRelay exact-name discovery", async () => {
     const root = await repository();
     await writeRepoFile(
       root,
       "agents.md",
       "Legacy lowercase instruction source.\n",
     );
+    await writeRepoFile(
+      root,
+      "packages/web/claude.md",
+      "Legacy lowercase Claude source.\n",
+    );
+    await writeRepoFile(
+      root,
+      "packages/web/gemini.MD",
+      "Legacy mixed-case Gemini source.\n",
+    );
+    await writeRepoFile(
+      root,
+      "packages/web/.CURSORRULES",
+      "Legacy uppercase Cursor source.\n",
+    );
+
+    const report = await assessRuleRelayCompatibility(root);
+
+    expect(report.ready).toBe(true);
+    expect(report.blockers).toEqual([]);
+    expect(report.expectedSources).toHaveLength(4);
+    expect(report.matchedSources).toEqual(
+      expect.arrayContaining([
+        { path: "agents.md", adapter: "agents-md", scope: "**" },
+        {
+          path: "packages/web/claude.md",
+          adapter: "claude",
+          scope: "packages/web/**",
+        },
+        {
+          path: "packages/web/gemini.MD",
+          adapter: "gemini",
+          scope: "packages/web/**",
+        },
+        {
+          path: "packages/web/.CURSORRULES",
+          adapter: "cursor",
+          scope: "packages/web/**",
+        },
+      ]),
+    );
+  });
+
+  it("audits supplemental legacy sources before declaring migration readiness", async () => {
+    const root = await repository();
+    await writeRepoFile(
+      root,
+      "packages/api/claude.md",
+      "See [missing guidance](./missing.md).\n",
+    );
 
     const report = await assessRuleRelayCompatibility(root);
 
     expect(report.ready).toBe(false);
-    expect(report.expectedSources).toEqual([
-      { path: "agents.md", adapter: "agents-md" },
+    expect(report.matchedSources).toEqual([
+      {
+        path: "packages/api/claude.md",
+        adapter: "claude",
+        scope: "packages/api/**",
+      },
     ]);
     expect(report.blockers).toEqual([
       expect.objectContaining({
-        code: "MISSING_RULE_RELAY_SOURCE",
-        file: "agents.md",
+        code: "LEGACY_SOURCE_HYGIENE_ERROR",
+        file: "packages/api/claude.md",
       }),
     ]);
   });
@@ -156,12 +232,12 @@ describe("RuleRelay compatibility", () => {
     );
   });
 
-  it("exposes readiness as deterministic CLI JSON and a blocking exit code", async () => {
+  it("exposes blockers as deterministic CLI JSON and a blocking exit code", async () => {
     const root = await repository();
     await writeRepoFile(
       root,
-      "agents.md",
-      "Legacy lowercase instruction source.\n",
+      ".github/instructions/bad.instructions.md",
+      "---\napplyTo: ../outside/**\n---\nKeep changes focused.\n",
     );
     const output: string[] = [];
     const original = process.stdout.write.bind(process.stdout);
@@ -191,8 +267,8 @@ describe("RuleRelay compatibility", () => {
     expect(report.ready).toBe(false);
     expect(report.blockers).toEqual([
       expect.objectContaining({
-        code: "MISSING_RULE_RELAY_SOURCE",
-        file: "agents.md",
+        code: "LEGACY_SOURCE_HYGIENE_ERROR",
+        file: ".github/instructions/bad.instructions.md",
       }),
     ]);
   });

@@ -195,35 +195,38 @@ describe("RuleRelay validation parity", () => {
     );
   });
 
-  it("fails closed when RuleRelay treats another URI scheme as a local link", async () => {
-    const root = await repository();
-    await writeRepoFile(
-      root,
-      "AGENTS.md",
-      "Inspect the [local artifact](file:missing.md) before release.\n",
-    );
+  it(
+    "fails closed when RuleRelay treats another URI scheme as a local link",
+    async () => {
+      const root = await repository();
+      await writeRepoFile(
+        root,
+        "AGENTS.md",
+        "Inspect the [local artifact](file:missing.md) before release.\n",
+      );
 
-    const report = await assessRuleRelayCompatibility(root);
+      const report = await assessRuleRelayCompatibility(root);
 
-    expect(report.validation.expectedFindings).toEqual([
-      {
-        code: "DEAD_LOCAL_LINK",
-        severity: "error",
-        file: "AGENTS.md",
-      },
-    ]);
-    expect(report.validation.matchedFindings).toEqual([]);
-    expect(report.validation.missingFindings).toEqual(
-      report.validation.expectedFindings,
-    );
-    expect(report.blockers).toEqual([
-      expect.objectContaining({
-        code: "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED",
-        file: "AGENTS.md",
-        detail: "error DEAD_LOCAL_LINK",
-      }),
-    ]);
-  });
+      expect(report.validation.expectedFindings).toEqual([
+        {
+          code: "DEAD_LOCAL_LINK",
+          severity: "error",
+          file: "AGENTS.md",
+        },
+      ]);
+      expect(report.validation.matchedFindings).toEqual([]);
+      expect(report.validation.missingFindings).toEqual(
+        report.validation.expectedFindings,
+      );
+      expect(report.blockers).toEqual([
+        expect.objectContaining({
+          code: "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED",
+          file: "AGENTS.md",
+          detail: "error DEAD_LOCAL_LINK",
+        }),
+      ]);
+    },
+  );
 
   it("exposes validation parity blockers through CLI JSON and exit status", async () => {
     const root = await repository();

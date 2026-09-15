@@ -74,9 +74,7 @@ describe("Copilot applyTo parsing", () => {
       { length: 65 },
       (_, index) => `src/${index}/**`,
     ).join(",");
-    expect(parseCopilotApplyTo(`---\napplyTo: ${tooMany}\n---`).ok).toBe(
-      false,
-    );
+    expect(parseCopilotApplyTo(`---\napplyTo: ${tooMany}\n---`).ok).toBe(false);
     expect(
       parseCopilotApplyTo(`---\napplyTo: ${"a".repeat(513)}\n---`).ok,
     ).toBe(false);

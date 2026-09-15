@@ -119,6 +119,33 @@ function compareByPath(
   );
 }
 
+function staticScopeDepth(scope: string): number {
+  let depth = 0;
+  for (const segment of scope.normalize("NFC").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (/[*?[{(]/.test(segment)) break;
+    depth += 1;
+  }
+  return depth;
+}
+
+function applicabilitySpecificity(source: ApplicableInstruction): number {
+  return Math.max(0, ...source.matchedScopes.map(staticScopeDepth));
+}
+
+function compareApplicable(
+  left: ApplicableInstruction,
+  right: ApplicableInstruction,
+): number {
+  // Specificity controls deterministic presentation only. It is not a claim
+  // that one agent ecosystem has precedence over another.
+  return (
+    applicabilitySpecificity(right) - applicabilitySpecificity(left) ||
+    left.adapter.localeCompare(right.adapter) ||
+    left.path.localeCompare(right.path)
+  );
+}
+
 export async function explainInstructions(
   root: string,
   rawTarget: string,
@@ -168,7 +195,7 @@ export async function explainInstructions(
   return {
     root: scan.root,
     target,
-    applicable: applicable.sort(compareByPath),
+    applicable: applicable.sort(compareApplicable),
     indeterminate: indeterminate.sort(compareByPath),
     warnings: [...scan.warnings],
   };

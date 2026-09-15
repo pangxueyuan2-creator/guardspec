@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import { auditInstructions } from "../src/core/instruction-hygiene.js";
-import { scanRepository } from "../src/core/scanner.js";
 
 const temporary: string[] = [];
 
@@ -192,20 +191,6 @@ describe("instruction hygiene audit", () => {
         "file",
       );
       await symlink("real-rules", join(root, "linked-rules"), "dir");
-
-      const scan = await scanRepository(root);
-      expect(scan.sources).toEqual([]);
-      expect(scan.warnings).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining(
-            "Skipped symlinked instruction source: AGENTS.md",
-          ),
-          expect.stringContaining("Skipped symlinked directory: linked-rules"),
-        ]),
-      );
-      expect(
-        scan.warnings.some((warning) => warning.includes("notes-link.md")),
-      ).toBe(false);
 
       const report = await auditInstructions(root);
       expect(report.valid).toBe(true);

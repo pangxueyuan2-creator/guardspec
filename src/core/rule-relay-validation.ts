@@ -1,16 +1,20 @@
-import { posix } from "node:path";
+import { dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 import { isCopilotPathInstruction, parseCopilotApplyTo } from "./copilot.js";
 import { safeRead } from "./fs-safe.js";
 import type { InstructionFinding } from "./instruction-hygiene.js";
 
+const localMarkdownLinks =
+  /\[[^\]]*\]\((?!https?:\/\/|mailto:|#)([^)\s]+)(?:\s+[^)]*)?\)/g;
 const inlineCode = /`([^`\n]+)`/g;
 const packageCommands =
   /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?([a-zA-Z0-9:_-]+)(?:\s|$)/;
 
 export type RuleRelayValidationFindingCode =
+  | "DEAD_LOCAL_LINK"
   | "DUPLICATE_INSTRUCTION"
   | "INVALID_COPILOT_APPLY_TO"
-  | "MISSING_PACKAGE_SCRIPT";
+  | "MISSING_PACKAGE_SCRIPT"
+  | "UNSAFE_LOCAL_LINK";
 
 export interface RuleRelayValidationFinding {
   code: RuleRelayValidationFindingCode;
@@ -108,6 +112,64 @@ function pushCopilotApplyToFinding(
   });
 }
 
+function isInsideRepository(root: string, candidate: string): boolean {
+  const repositoryRelative = relative(root, candidate);
+  return (
+    repositoryRelative === "" ||
+    (!repositoryRelative.startsWith(`..${sep}`) &&
+      repositoryRelative !== ".." &&
+      !isAbsolute(repositoryRelative))
+  );
+}
+
+function repositoryPathExists(
+  target: string,
+  repositoryFiles: ReadonlySet<string>,
+): boolean {
+  if (target === ".") return true;
+  if (repositoryFiles.has(target)) return true;
+  const prefix = `${target.replace(/\/$/, "")}/`;
+  for (const path of repositoryFiles) {
+    if (path.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+function pushLocalLinkFindings(
+  root: string,
+  file: LoadedLegacyInstruction,
+  repositoryFiles: ReadonlySet<string>,
+  findings: RuleRelayValidationFinding[],
+): void {
+  const sourceAbsolutePath = resolve(root, file.source.path);
+  for (const match of file.content.matchAll(localMarkdownLinks)) {
+    const rawTarget = match[1];
+    if (!rawTarget || rawTarget.startsWith("#")) continue;
+    const target = rawTarget.split("#", 1)[0];
+    if (!target) continue;
+
+    const resolved = resolve(dirname(sourceAbsolutePath), target);
+    if (!isInsideRepository(root, resolved)) {
+      findings.push({
+        code: "UNSAFE_LOCAL_LINK",
+        severity: "error",
+        file: file.source.path,
+      });
+      continue;
+    }
+
+    const repositoryRelative =
+      relative(root, resolved).split(sep).join("/") || ".";
+    if (!repositoryPathExists(repositoryRelative, repositoryFiles)) {
+      findings.push({
+        code: "DEAD_LOCAL_LINK",
+        severity: "error",
+        file: file.source.path,
+      });
+    }
+  }
+}
+
 async function nearestLegacyPackageManifest(
   root: string,
   sourcePath: string,
@@ -178,6 +240,7 @@ async function legacyValidationFindings(
   pushDuplicateFindings(files, findings);
   for (const file of files) {
     pushCopilotApplyToFinding(file, findings);
+    pushLocalLinkFindings(root, file, repositoryFiles, findings);
     await pushPackageScriptFindings(root, file, repositoryFiles, findings);
   }
   return uniqueFindings(findings);

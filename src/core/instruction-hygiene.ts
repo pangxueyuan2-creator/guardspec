@@ -307,16 +307,18 @@ async function pushPackageScriptFindings(
     file.source.path,
     repositoryFiles,
   );
-  if (!located?.manifest.scripts || typeof located.manifest.scripts !== "object") {
-    return;
-  }
+  if (!located) return;
+  const scripts =
+    located.manifest.scripts && typeof located.manifest.scripts === "object"
+      ? located.manifest.scripts
+      : {};
 
   for (const match of file.content.matchAll(inlineCode)) {
     const value = match[1]?.trim();
     if (!value) continue;
     const reference = packageScriptReference(value);
     if (!reference) continue;
-    if (Object.hasOwn(located.manifest.scripts, reference.scriptName)) continue;
+    if (Object.hasOwn(scripts, reference.scriptName)) continue;
     if (
       reference.allowServerFallback &&
       hasNpmStartServerFallback(located.directory, repositoryFiles)

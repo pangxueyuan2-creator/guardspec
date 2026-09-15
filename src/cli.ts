@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { scanRepository } from "./core/scanner.js";
 import { auditInstructions } from "./core/instruction-hygiene.js";
+import { explainInstructions } from "./core/instruction-applicability.js";
 import { evaluate, evaluateTask } from "./core/evaluator.js";
 import { loadPolicy, policyTemplate, writePolicy } from "./core/policy.js";
 import { manualProvenance } from "./core/policy.js";
@@ -20,7 +21,7 @@ const EXIT = {
 } as const;
 
 function usage(): string {
-  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
+  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec instructions explain <target-path> [--root <path>] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
 }
 
 interface Args {
@@ -215,6 +216,39 @@ async function handle(args: Args): Promise<number> {
     return report.errors > 0 || (strict && report.warnings > 0)
       ? EXIT.invalid
       : EXIT.success;
+  }
+  if (args.command === "instructions" && args.positional[0] === "explain") {
+    const target = args.positional[1];
+    if (!target)
+      throw new Error(
+        "instructions explain requires a repository-relative target path.",
+      );
+    const report = await explainInstructions(root, target);
+    if (json) writeOutput(report, true);
+    else
+      writeOutput(
+        `Instruction applicability\n  Target: ${report.target}\n  Applicable sources: ${report.applicable.length}\n  Indeterminate sources: ${report.indeterminate.length}\n\nApplicable:\n${
+          report.applicable
+            .map(
+              (source) =>
+                `  - ${source.path} (${source.adapter}) ← ${source.matchedScopes.join(", ")}`,
+            )
+            .join("\n") || "  - none proven applicable"
+        }\n\nIndeterminate:\n${
+          report.indeterminate
+            .map(
+              (source) =>
+                `  - ${source.path} (${source.adapter})\n    ${source.reason}`,
+            )
+            .join("\n") || "  - none"
+        }${
+          report.warnings.length > 0
+            ? `\n\nScan warnings:\n${report.warnings.map((warning) => `  - ${warning}`).join("\n")}`
+            : ""
+        }`,
+        false,
+      );
+    return EXIT.success;
   }
   if (args.command === "explain") {
     const subject = args.positional[0];

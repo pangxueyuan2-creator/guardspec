@@ -17,6 +17,12 @@ export type {
   InstructionFinding,
   InstructionFindingCode,
 } from "./core/instruction-hygiene.js";
+export { explainInstructions } from "./core/instruction-applicability.js";
+export type {
+  ApplicableInstruction,
+  IndeterminateInstruction,
+  InstructionApplicabilityReport,
+} from "./core/instruction-applicability.js";
 export {
   adapterTarget,
   renderAdapter,

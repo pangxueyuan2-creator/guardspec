@@ -23,7 +23,7 @@ const EXIT = {
 } as const;
 
 function usage(): string {
-  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions scan [--root <path>] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec instructions explain <target-path> [--root <path>] [--json]\n  guardspec instructions compatibility rule-relay [--root <path>] [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
+  return `GuardSpec — compile repository intent into enforceable agent boundaries.\n\nUsage:\n  guardspec scan [--root <path>] [--json] [--write]\n  guardspec init [--root <path>] [--force]\n  guardspec check [--root <path>] [--policy <file>] [--path <path>]... [--command <cmd>]... [--network <domain>]... [--mcp <server>]... [--ai-assisted] [--strict-unknown] [--json]\n  guardspec instructions scan [--root <path>] [--json]\n  guardspec instructions check [--root <path>] [--strict] [--json]\n  guardspec instructions explain <target-path> [--root <path>] [--json]\n  guardspec instructions compatibility rule-relay [--root <path>] [--target <path>]... [--json]\n  guardspec explain <rule-id|path> [--root <path>] [--policy <file>] [--json]\n  guardspec policy validate [--root <path>] [--policy <file>]\n  guardspec adapters generate <agent> [--root <path>] [--policy <file>]\n  guardspec doctor [--root <path>] [--json]\n  guardspec mcp [--root <path>] [--policy <file>]\n\nExit codes: 0 success, 2 denied, 3 conflict, 4 invalid input, 5 system error.`;
 }
 
 interface Args {
@@ -247,16 +247,25 @@ async function handle(args: Args): Promise<number> {
     args.positional[0] === "compatibility" &&
     args.positional[1] === "rule-relay"
   ) {
-    const report = await assessRuleRelayCompatibility(root);
+    const report = await assessRuleRelayCompatibility(root, flags(args, "target"));
     if (json) writeOutput(report, true);
     else
       writeOutput(
-        `RuleRelay migration readiness\n  Ready: ${report.ready ? "yes" : "no"}\n  Legacy sources expected: ${report.expectedSources.length}\n  Legacy sources matched: ${report.matchedSources.length}\n  GuardSpec-only expanded sources: ${report.expandedSources.length}\n  Blockers: ${report.blockers.length}\n  Warnings: ${report.warnings.length}${
+        `RuleRelay migration readiness\n  Ready: ${report.ready ? "yes" : "no"}\n  Legacy sources expected: ${report.expectedSources.length}\n  Legacy sources matched: ${report.matchedSources.length}\n  GuardSpec-only expanded sources: ${report.expandedSources.length}\n  Targets checked: ${report.targetChecks.length}\n  Blockers: ${report.blockers.length}\n  Warnings: ${report.warnings.length}${
           report.blockers.length > 0
             ? `\n\nBlockers:\n${report.blockers
                 .map(
                   (blocker) =>
-                    `  - ${blocker.code} ${blocker.file}\n    ${blocker.message}${blocker.detail ? `\n    ${blocker.detail}` : ""}`,
+                    `  - ${blocker.code} ${blocker.file}${blocker.target ? ` → ${blocker.target}` : ""}\n    ${blocker.message}${blocker.detail ? `\n    ${blocker.detail}` : ""}`,
+                )
+                .join("\n")}`
+            : ""
+        }${
+          report.targetChecks.length > 0
+            ? `\n\nTarget parity:\n${report.targetChecks
+                .map(
+                  (target) =>
+                    `  - ${target.target}: ${target.ready ? "ready" : "blocked"} (${target.matchedApplicableSources.length}/${target.expectedApplicableSources.length} legacy sources matched, ${target.expandedApplicableSources.length} GuardSpec-only expanded)`,
                 )
                 .join("\n")}`
             : ""

@@ -36,9 +36,21 @@ describe("RuleRelay compatibility", () => {
   it("proves legacy discovery while reporting GuardSpec-only expanded coverage", async () => {
     const root = await repository();
     await writeRepoFile(root, "AGENTS.md", "Protect `src/core`.\n");
-    await writeRepoFile(root, "packages/api/CLAUDE.md", "Keep API edits focused.\n");
-    await writeRepoFile(root, "GEMINI.md", "Use repository-local context.\n");
-    await writeRepoFile(root, ".cursorrules", "Review changes before commit.\n");
+    await writeRepoFile(
+      root,
+      "packages/api/CLAUDE.md",
+      "Keep API edits focused.\n",
+    );
+    await writeRepoFile(
+      root,
+      "GEMINI.md",
+      "Use repository-local context.\n",
+    );
+    await writeRepoFile(
+      root,
+      ".cursorrules",
+      "Review changes before commit.\n",
+    );
     await writeRepoFile(
       root,
       ".github/copilot-instructions.md",
@@ -54,8 +66,16 @@ describe("RuleRelay compatibility", () => {
         "Before opening a pull request, run `npm test`.",
       ].join("\n"),
     );
-    await writeRepoFile(root, "package.json", '{"scripts":{"test":"vitest"}}\n');
-    await writeRepoFile(root, "AGENTS.override.md", "GuardSpec override coverage.\n");
+    await writeRepoFile(
+      root,
+      "package.json",
+      '{"scripts":{"test":"vitest"}}\n',
+    );
+    await writeRepoFile(
+      root,
+      "AGENTS.override.md",
+      "GuardSpec override coverage.\n",
+    );
     await writeRepoFile(root, "opencode.json", "{}\n");
 
     const report = await assessRuleRelayCompatibility(root);
@@ -81,7 +101,11 @@ describe("RuleRelay compatibility", () => {
 
   it("fails closed when GuardSpec misses a case-insensitive legacy source", async () => {
     const root = await repository();
-    await writeRepoFile(root, "agents.md", "Legacy lowercase instruction source.\n");
+    await writeRepoFile(
+      root,
+      "agents.md",
+      "Legacy lowercase instruction source.\n",
+    );
 
     const report = await assessRuleRelayCompatibility(root);
 
@@ -120,7 +144,11 @@ describe("RuleRelay compatibility", () => {
 
   it("exposes readiness as deterministic CLI JSON and a blocking exit code", async () => {
     const root = await repository();
-    await writeRepoFile(root, "agents.md", "Legacy lowercase instruction source.\n");
+    await writeRepoFile(
+      root,
+      "agents.md",
+      "Legacy lowercase instruction source.\n",
+    );
     const output: string[] = [];
     const original = process.stdout.write.bind(process.stdout);
     process.stdout.write = (chunk: string) => {

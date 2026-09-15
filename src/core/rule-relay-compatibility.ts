@@ -4,10 +4,6 @@ import { inventoryInstructions } from "./instruction-inventory.js";
 import type { SourceAdapter } from "./types.js";
 
 const SCHEMA = "guardspec.dev/rule-relay-compatibility/v1" as const;
-const copilotRepositoryInstruction =
-  /(^|\/)\.github\/copilot-instructions\.md$/i;
-const copilotPathInstruction =
-  /(^|\/)\.github\/instructions\/.+\.instructions\.md$/i;
 
 export type RuleRelayAdapter =
   "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
@@ -59,17 +55,40 @@ export interface RuleRelayCompatibilityReport {
   };
 }
 
+function isNamedFile(path: string, name: string): boolean {
+  const normalized = path.toLowerCase();
+  return normalized === name || normalized.endsWith(`/${name}`);
+}
+
+function isRuleRelayCopilotRepositoryInstruction(path: string): boolean {
+  return isNamedFile(path, ".github/copilot-instructions.md");
+}
+
+function isRuleRelayCopilotPathInstruction(path: string): boolean {
+  const segments = path.toLowerCase().split("/");
+  for (let index = 0; index < segments.length - 2; index += 1) {
+    if (segments[index] !== ".github" || segments[index + 1] !== "instructions")
+      continue;
+    const relative = segments.slice(index + 2).join("/");
+    return (
+      relative.length > ".instructions.md".length &&
+      relative.endsWith(".instructions.md")
+    );
+  }
+  return false;
+}
+
 function ruleRelayAdapterForPath(path: string): RuleRelayAdapter | undefined {
-  if (/(^|\/)AGENTS\.md$/i.test(path)) return "agents-md";
+  if (isNamedFile(path, "agents.md")) return "agents-md";
   if (
-    copilotRepositoryInstruction.test(path) ||
-    copilotPathInstruction.test(path)
+    isRuleRelayCopilotRepositoryInstruction(path) ||
+    isRuleRelayCopilotPathInstruction(path)
   ) {
     return "copilot";
   }
-  if (/(^|\/)CLAUDE\.md$/i.test(path)) return "claude";
-  if (/(^|\/)GEMINI\.md$/i.test(path)) return "gemini";
-  if (/(^|\/)\.cursorrules$/i.test(path)) return "cursor";
+  if (isNamedFile(path, "claude.md")) return "claude";
+  if (isNamedFile(path, "gemini.md")) return "gemini";
+  if (isNamedFile(path, ".cursorrules")) return "cursor";
   return undefined;
 }
 

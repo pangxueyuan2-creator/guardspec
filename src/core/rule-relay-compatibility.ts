@@ -4,13 +4,21 @@ import { safeRead, walkRepository } from "./fs-safe.js";
 import { explainInstructions } from "./instruction-applicability.js";
 import { auditInstructions } from "./instruction-hygiene.js";
 import { inventoryInstructions } from "./instruction-inventory.js";
+import {
+  compareRuleRelayValidation,
+  type RuleRelayValidationComparison,
+} from "./rule-relay-validation.js";
 import type { SourceAdapter } from "./types.js";
 
 const SCHEMA = "guardspec.dev/rule-relay-compatibility/v1" as const;
 const MAX_TARGETS = 64;
 
 export type RuleRelayAdapter =
-  "agents-md" | "claude" | "copilot" | "cursor" | "gemini";
+  | "agents-md"
+  | "claude"
+  | "copilot"
+  | "cursor"
+  | "gemini";
 
 export interface RuleRelayExpectedSource {
   path: string;
@@ -30,6 +38,7 @@ export interface RuleRelayExpandedSource {
 export type RuleRelayCompatibilityBlockerCode =
   | "MISSING_RULE_RELAY_SOURCE"
   | "LEGACY_SOURCE_HYGIENE_ERROR"
+  | "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED"
   | "LEGACY_TARGET_SOURCE_NOT_APPLICABLE"
   | "LEGACY_TARGET_SOURCE_INDETERMINATE"
   | "LEGACY_TARGET_SCOPE_EXPANDED";
@@ -75,6 +84,7 @@ export interface RuleRelayCompatibilityReport {
   expectedSources: RuleRelayExpectedSource[];
   matchedSources: RuleRelayMatchedSource[];
   expandedSources: RuleRelayExpandedSource[];
+  validation: RuleRelayValidationComparison;
   targetChecks: RuleRelayTargetCompatibility[];
   blockers: RuleRelayCompatibilityBlocker[];
   warnings: RuleRelayCompatibilityWarning[];
@@ -330,6 +340,12 @@ export async function assessRuleRelayCompatibility(
     inventoryInstructions(root),
     auditInstructions(root),
   ]);
+  const validation = await compareRuleRelayValidation(
+    root,
+    expectedSources,
+    new Set(repositoryFiles),
+    audit.findings,
+  );
   const expectedByPath = new Map(
     expectedSources.map((source) => [source.path, source] as const),
   );
@@ -339,6 +355,15 @@ export async function assessRuleRelayCompatibility(
 
   const matchedSources: RuleRelayMatchedSource[] = [];
   const blockers: RuleRelayCompatibilityBlocker[] = [];
+  for (const finding of validation.missingFindings) {
+    blockers.push({
+      code: "LEGACY_VALIDATION_FINDING_NOT_REPRODUCED",
+      file: finding.file,
+      message:
+        "RuleRelay would emit this validation finding, but GuardSpec instruction hygiene does not reproduce the same code, severity, and file.",
+      detail: `${finding.severity} ${finding.code}`,
+    });
+  }
   for (const expected of expectedSources) {
     const discovered = inventoryByPath.get(expected.path);
     if (!discovered || discovered.adapter !== expected.adapter) {
@@ -412,6 +437,7 @@ export async function assessRuleRelayCompatibility(
     expectedSources,
     matchedSources,
     expandedSources,
+    validation,
     targetChecks,
     blockers,
     warnings,

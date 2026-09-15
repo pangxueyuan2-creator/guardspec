@@ -4,7 +4,9 @@ const MAX_PATTERNS = 64;
 const MAX_PATTERN_LENGTH = 512;
 
 type ParseFailure = { readonly ok: false; readonly error: string };
-type ScalarResult = { readonly ok: true; readonly value: string } | ParseFailure;
+type ScalarResult =
+  | { readonly ok: true; readonly value: string }
+  | ParseFailure;
 
 export type CopilotApplyToResult =
   | { readonly ok: true; readonly patterns: readonly string[] }
@@ -67,7 +69,8 @@ export function parseCopilotApplyTo(content: string): CopilotApplyToResult {
   if (lines[0]?.trim() !== "---") {
     return {
       ok: false,
-      error: "Path-specific Copilot instructions must start with YAML frontmatter.",
+      error:
+        "Path-specific Copilot instructions must start with YAML frontmatter.",
     };
   }
 

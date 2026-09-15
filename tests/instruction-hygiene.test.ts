@@ -131,11 +131,7 @@ describe("instruction hygiene audit", () => {
   it("reports deterministic duplicate warnings and lets strict mode promote warnings to failure", async () => {
     await withTempRepository(async (root) => {
       await writeRepoFile(root, "AGENTS.md", "Shared guidance.\n");
-      await writeRepoFile(
-        root,
-        "packages/api/AGENTS.md",
-        "Shared guidance.\n",
-      );
+      await writeRepoFile(root, "packages/api/AGENTS.md", "Shared guidance.\n");
 
       const first = await auditInstructions(root);
       const second = await auditInstructions(root);

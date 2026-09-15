@@ -13,17 +13,12 @@ import {
   extractTextRules,
 } from "./extract.js";
 import { policyTemplate } from "./policy.js";
-import {
-  inspectRepositorySymlinks,
-  MAX_SYMLINK_DIAGNOSTICS,
-} from "./symlink-diagnostics.js";
 import type {
   Conflict,
   DiscoveredSource,
   PolicyRule,
   RiskSummary,
   ScanReport,
-  SourceAdapter,
 } from "./types.js";
 
 const RECOGNIZED = new Set([
@@ -40,15 +35,6 @@ const RECOGNIZED = new Set([
   ".cursorrules",
 ]);
 
-const INSTRUCTION_ADAPTERS = new Set<SourceAdapter>([
-  "agents-md",
-  "claude",
-  "copilot",
-  "cursor",
-  "gemini",
-  "opencode",
-]);
-
 function isCandidate(path: string): boolean {
   return (
     RECOGNIZED.has(basename(path)) ||
@@ -57,15 +43,6 @@ function isCandidate(path: string): boolean {
     isCopilotRepositoryInstruction(path) ||
     path.startsWith(".cursor/rules/")
   );
-}
-
-function isInstructionCandidate(path: string): boolean {
-  const adapter = adapterForPath(path);
-  return adapter !== undefined && INSTRUCTION_ADAPTERS.has(adapter);
-}
-
-function symlinkDetail(path: string, target?: string): string {
-  return target ? `${path} -> ${target}` : path;
 }
 
 function conflictKey(rule: PolicyRule): string {
@@ -205,30 +182,9 @@ export async function scanRepository(root: string): Promise<ScanReport> {
   if (!existsSync(root))
     throw new Error(`Repository root does not exist: ${root}`);
   const files = (await walkRepository(root)).filter(isCandidate);
-  const symlinkReport = await inspectRepositorySymlinks(root);
   const rules: PolicyRule[] = [];
   const sources: DiscoveredSource[] = [];
   const warnings: string[] = [];
-
-  for (const symlink of symlinkReport.symlinks) {
-    if (symlink.kind === "directory") {
-      warnings.push(
-        `Skipped symlinked directory: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not traverse symlinked directories.`,
-      );
-      continue;
-    }
-    if (isInstructionCandidate(symlink.path)) {
-      warnings.push(
-        `Skipped symlinked instruction source: ${symlinkDetail(symlink.path, symlink.target)}. GuardSpec does not read symlinked instruction files.`,
-      );
-    }
-  }
-  if (symlinkReport.truncated) {
-    warnings.push(
-      `Symlink diagnostics were truncated after ${MAX_SYMLINK_DIAGNOSTICS} entries; additional symlinks were not classified.`,
-    );
-  }
-
   for (const path of files) {
     const adapter = adapterForPath(path);
     if (!adapter) continue;

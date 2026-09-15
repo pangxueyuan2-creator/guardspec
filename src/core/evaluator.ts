@@ -57,6 +57,24 @@ export function evaluate(
   action: RuleKind,
   target: string,
 ): Decision {
+  const requiredChecks = [
+    ...new Set(
+      policy.rules
+        .filter(
+          (rule) =>
+            rule.kind === "check" &&
+            rule.effect === "require" &&
+            matches(rule, target),
+        )
+        .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : [])),
+    ),
+  ];
+  const approvalRequired = policy.rules.some(
+    (rule) =>
+      rule.kind === "approval" &&
+      rule.effect === "require" &&
+      matches(rule, target),
+  );
   const candidates = policy.rules
     .filter(
       (rule) =>
@@ -77,8 +95,8 @@ export function evaluate(
       matchedRules: [],
       reason:
         "No matching policy rule; review repository defaults before proceeding.",
-      requiredChecks: [],
-      approvalRequired: false,
+      requiredChecks,
+      approvalRequired,
     };
   const bestSpecificity = specificity(candidates[0]!.scope);
   const applicable = candidates.filter(
@@ -86,24 +104,6 @@ export function evaluate(
   );
   const hasAllow = applicable.some((rule) => rule.effect === "allow");
   const hasDeny = applicable.some((rule) => rule.effect === "deny");
-  const requiredChecks = [
-    ...new Set(
-      policy.rules
-        .filter(
-          (rule) =>
-            rule.kind === "check" &&
-            rule.effect === "require" &&
-            matches(rule, target),
-        )
-        .flatMap((rule) => (typeof rule.value === "string" ? [rule.value] : [])),
-    ),
-  ];
-  const approvalRequired = policy.rules.some(
-    (rule) =>
-      rule.kind === "approval" &&
-      rule.effect === "require" &&
-      matches(rule, target),
-  );
   if (hasAllow && hasDeny)
     return {
       allowed: false,

@@ -11,6 +11,12 @@ export {
   stringifyPolicy,
   writePolicy,
 } from "./core/policy.js";
+export { auditInstructions } from "./core/instruction-hygiene.js";
+export type {
+  InstructionAuditReport,
+  InstructionFinding,
+  InstructionFindingCode,
+} from "./core/instruction-hygiene.js";
 export {
   adapterTarget,
   renderAdapter,

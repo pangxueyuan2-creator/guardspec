@@ -53,6 +53,25 @@ Exit codes:
 
 `guardspec instructions explain <target-path>` is also read-only. It reports source-level applicability for directory-scoped instruction files and Copilot repository / `applyTo` scopes. Conditional rule families that GuardSpec cannot safely interpret yet are reported as **indeterminate** instead of being silently treated as applicable or inapplicable. This command does not assign a universal precedence order across different agents.
 
+## Migrating from RuleRelay
+
+GuardSpec contains an explicit, read-only RuleRelay migration bridge. Prove discovery, validation, and representative target applicability before changing CI:
+
+```bash
+guardspec instructions compatibility rule-relay \
+  --root /path/to/repo \
+  --target src/server.ts \
+  --json
+```
+
+During cutover, preserve RuleRelay validation behavior with:
+
+```bash
+guardspec instructions check --compat rule-relay --root /path/to/repo --json
+```
+
+A committed migration fixture is exercised by the test suite so this path is not documentation-only. See [docs/migrations/rule-relay.md](docs/migrations/rule-relay.md) for the staged migration and the deliberate transition to ordinary GuardSpec hygiene.
+
 ## How it relates to the other two tools
 
 Different jobs, optional to use together:
@@ -72,12 +91,14 @@ bash demo/run-demo.sh
 ## Commands
 
 ```text
-guardspec scan                  discover rules and conflicts
-guardspec init                  write a starter policy
-guardspec check                 preflight a path/command/network/MCP
-guardspec instructions check    validate instruction-file hygiene
-guardspec instructions explain  show source applicability for one target
-guardspec explain               show why a compiled policy rule fired
+guardspec scan                                      discover rules and conflicts
+guardspec init                                      write a starter policy
+guardspec check                                     preflight a path/command/network/MCP
+guardspec instructions check                        validate instruction-file hygiene
+guardspec instructions check --compat rule-relay    preserve RuleRelay check semantics during migration
+guardspec instructions compatibility rule-relay     prove RuleRelay migration readiness
+guardspec instructions explain                      show source applicability for one target
+guardspec explain                                   show why a compiled policy rule fired
 guardspec doctor
 guardspec mcp
 ```

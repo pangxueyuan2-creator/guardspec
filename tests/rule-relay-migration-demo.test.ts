@@ -57,17 +57,12 @@ describe("committed RuleRelay migration proof", () => {
       ".github/instructions/src.instructions.md",
       "AGENTS.md",
     ]);
-    expect(compatibility.targetChecks).toEqual([
-      expect.objectContaining({
-        target: "src/server.ts",
-        ready: true,
-        expectedApplicableSources: [
-          expect.objectContaining({
-            path: ".github/instructions/src.instructions.md",
-          }),
-          expect.objectContaining({ path: "AGENTS.md" }),
-        ],
-      }),
+    const target = compatibility.targetChecks[0];
+    expect(target?.target).toBe("src/server.ts");
+    expect(target?.ready).toBe(true);
+    expect(target?.expectedApplicableSources.map(({ path }) => path)).toEqual([
+      ".github/instructions/src.instructions.md",
+      "AGENTS.md",
     ]);
 
     process.exitCode = undefined;
@@ -88,9 +83,9 @@ describe("committed RuleRelay migration proof", () => {
       errors: number;
       warnings: number;
     };
-    expect(legacyCheck).toEqual(
-      expect.objectContaining({ valid: true, errors: 0, warnings: 0 }),
-    );
+    expect(legacyCheck.valid).toBe(true);
+    expect(legacyCheck.errors).toBe(0);
+    expect(legacyCheck.warnings).toBe(0);
 
     process.exitCode = undefined;
     const guardSpecOutput = await captureStdout(async () =>
@@ -108,8 +103,8 @@ describe("committed RuleRelay migration proof", () => {
       errors: number;
       warnings: number;
     };
-    expect(guardSpec).toEqual(
-      expect.objectContaining({ valid: true, errors: 0, warnings: 0 }),
-    );
+    expect(guardSpec.valid).toBe(true);
+    expect(guardSpec.errors).toBe(0);
+    expect(guardSpec.warnings).toBe(0);
   });
 });

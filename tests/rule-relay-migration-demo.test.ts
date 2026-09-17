@@ -100,13 +100,7 @@ describe("committed RuleRelay migration proof", () => {
 
     process.exitCode = undefined;
     const guardSpecOutput = await captureStdout(async () =>
-      binMain([
-        "instructions",
-        "check",
-        "--root",
-        fixtureRoot,
-        "--json",
-      ]),
+      binMain(["instructions", "check", "--root", fixtureRoot, "--json"]),
     );
     expect(process.exitCode).toBe(0);
     const guardSpec = JSON.parse(guardSpecOutput) as CheckReport;

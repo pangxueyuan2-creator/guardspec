@@ -44,7 +44,7 @@
     "clean": "rm -rf dist coverage",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --write . && git diff --exit-code -- tests/rule-relay-migration-demo.test.ts",
+    "format:check": "prettier --check .",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",

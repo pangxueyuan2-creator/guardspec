@@ -2,9 +2,30 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { main as binMain } from "../src/bin.js";
 
+type Source = { path: string };
+type CompatibilityReport = {
+  ready: boolean;
+  expectedSources: Source[];
+  blockers: unknown[];
+  targetChecks: Array<{
+    target: string;
+    ready: boolean;
+    expectedApplicableSources: Source[];
+  }>;
+};
+type CheckReport = {
+  valid: boolean;
+  errors: number;
+  warnings: number;
+};
+
 const fixtureRoot = fileURLToPath(
   new URL("../demo/rule-relay-migration-repo/", import.meta.url),
 );
+
+function sourcePaths(sources: readonly Source[]): string[] {
+  return sources.map((source) => source.path);
+}
 
 async function captureStdout(run: () => Promise<void>): Promise<string> {
   const output: string[] = [];
@@ -41,26 +62,20 @@ describe("committed RuleRelay migration proof", () => {
     );
 
     expect(process.exitCode).toBe(0);
-    const compatibility = JSON.parse(compatibilityOutput) as {
-      ready: boolean;
-      expectedSources: Array<{ path: string }>;
-      blockers: unknown[];
-      targetChecks: Array<{
-        target: string;
-        ready: boolean;
-        expectedApplicableSources: Array<{ path: string }>;
-      }>;
-    };
+    const compatibility = JSON.parse(
+      compatibilityOutput,
+    ) as CompatibilityReport;
     expect(compatibility.ready).toBe(true);
     expect(compatibility.blockers).toEqual([]);
-    expect(compatibility.expectedSources.map(({ path }) => path)).toEqual([
+    expect(sourcePaths(compatibility.expectedSources)).toEqual([
       ".github/instructions/src.instructions.md",
       "AGENTS.md",
     ]);
+
     const target = compatibility.targetChecks[0];
     expect(target?.target).toBe("src/server.ts");
     expect(target?.ready).toBe(true);
-    expect(target?.expectedApplicableSources.map(({ path }) => path)).toEqual([
+    expect(sourcePaths(target?.expectedApplicableSources ?? [])).toEqual([
       ".github/instructions/src.instructions.md",
       "AGENTS.md",
     ]);
@@ -78,11 +93,7 @@ describe("committed RuleRelay migration proof", () => {
       ]),
     );
     expect(process.exitCode).toBe(0);
-    const legacyCheck = JSON.parse(legacyCheckOutput) as {
-      valid: boolean;
-      errors: number;
-      warnings: number;
-    };
+    const legacyCheck = JSON.parse(legacyCheckOutput) as CheckReport;
     expect(legacyCheck.valid).toBe(true);
     expect(legacyCheck.errors).toBe(0);
     expect(legacyCheck.warnings).toBe(0);
@@ -98,11 +109,7 @@ describe("committed RuleRelay migration proof", () => {
       ]),
     );
     expect(process.exitCode).toBe(0);
-    const guardSpec = JSON.parse(guardSpecOutput) as {
-      valid: boolean;
-      errors: number;
-      warnings: number;
-    };
+    const guardSpec = JSON.parse(guardSpecOutput) as CheckReport;
     expect(guardSpec.valid).toBe(true);
     expect(guardSpec.errors).toBe(0);
     expect(guardSpec.warnings).toBe(0);

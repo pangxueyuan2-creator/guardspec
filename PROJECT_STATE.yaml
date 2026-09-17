@@ -1,0 +1,19 @@
+product: guardspec
+status: active
+tier: durable
+role: repository preflight and agent-instruction governance
+consolidation:
+  rule_relay:
+    status: maintenance-only
+    migration_target: guardspec
+    bridge:
+      readiness: guardspec instructions compatibility rule-relay
+      validation: guardspec instructions check --compat rule-relay
+current_priorities:
+  - prove RuleRelay migration with realistic repository fixtures
+  - collect real adoption and integration evidence
+  - keep CI, Windows, packaging, and CodeQL green
+non_goals:
+  - duplicate RuleRelay features in a second product
+  - add speculative parser semantics without a concrete consumer
+  - execute repository instructions, commands, models, or tools during scanning

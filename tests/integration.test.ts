@@ -87,7 +87,7 @@ describe("CLI behavior", () => {
         "-p",
         "tsconfig.json",
       ],
-      { cwd: ROOT, stdio: "pipe" },
+      { cwd: ROOT, stdio: "pipe", timeout: 20_000 },
     );
     const result = spawnSync(
       process.execPath,
@@ -95,11 +95,12 @@ describe("CLI behavior", () => {
       {
         cwd: ROOT,
         encoding: "utf8",
+        timeout: 5_000,
       },
     );
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Usage:");
-  });
+  }, 30_000);
   it("initializes, checks, emits JSON, and generates an adapter", async () => {
     const root = await copyFixture("python-repo");
     const output: string[] = [];

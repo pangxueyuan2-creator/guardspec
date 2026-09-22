@@ -54,9 +54,18 @@ async function run(): Promise<void> {
   const output = JSON.stringify(report);
   core.setOutput("result", output);
   const sarifPath = ".guardspec.sarif";
-  await import("node:fs/promises").then(({ writeFile }) =>
-    writeFile(sarifPath, JSON.stringify(sarif(report), null, 2)),
-  );
+  const { lstat, writeFile } = await import("node:fs/promises");
+  try {
+    const metadata = await lstat(sarifPath);
+    if (metadata.isSymbolicLink() || !metadata.isFile())
+      throw new Error(
+        `Refusing to write SARIF report to a symbolic link or non-regular file: ${sarifPath}`,
+      );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  // SARIF can contain many findings; the policy-file size limit does not apply.
+  await writeFile(sarifPath, JSON.stringify(sarif(report), null, 2), "utf8");
   core.setOutput("sarif", sarifPath);
   if (
     !report.valid ||

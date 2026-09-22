@@ -50983,7 +50983,18 @@ async function run() {
     const output = JSON.stringify(report);
     setOutput("result", output);
     const sarifPath = ".guardspec.sarif";
-    await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 1455, 23)).then(({ writeFile }) => writeFile(sarifPath, JSON.stringify(sarif(report), null, 2)));
+    const { lstat, writeFile } = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 1455, 23));
+    try {
+        const metadata = await lstat(sarifPath);
+        if (metadata.isSymbolicLink() || !metadata.isFile())
+            throw new Error(`Refusing to write SARIF report to a symbolic link or non-regular file: ${sarifPath}`);
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+    }
+    // SARIF can contain many findings; the policy-file size limit does not apply.
+    await writeFile(sarifPath, JSON.stringify(sarif(report), null, 2), "utf8");
     setOutput("sarif", sarifPath);
     if (!report.valid ||
         (getBooleanInput("fail-on-warn") &&

@@ -29,6 +29,8 @@ The stdio MCP server follows MCP guidance to reserve stdout for protocol message
 
 GuardSpec cannot make another agent obey a policy. It cannot enforce runtime sandboxing, GitHub branch protection, OS permissions, secret access, review approval, vendor-specific hosted Agent behavior, or a remote MCP server’s behavior. It does not claim that a markdown instruction file is sufficient security control. Use it alongside code review, CI, least-privilege tokens, protected branches, and runtime isolation.
 
+Path preflight operates on logical repository-relative names. It accepts backslash separators and leading `./`, but denies traversal, absolute/UNC/drive-qualified names, empty or internal `.` segments, and NUL characters before matching any allow rule. Matching remains case-sensitive on every host. Callers must supply the repository's canonical spelling; preflight does not resolve filesystem aliases such as symlinks, Windows case variants, short names, or trailing-dot aliases. It cannot prove that a later filesystem operation reaches the same file.
+
 ## Disclosure process
 
 Do not open public issues for suspected security vulnerabilities, possible repository data exposure or ways to bypass a GuardSpec control. Follow [SECURITY.md](../SECURITY.md) instead. Reports should include a minimal reproducer without secrets or private repository content.

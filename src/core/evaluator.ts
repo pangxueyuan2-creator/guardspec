@@ -9,6 +9,7 @@ import type {
   TaskRequest,
 } from "./types.js";
 import { detectConflicts } from "./scanner.js";
+import { normalizeRepositoryPath } from "./fs-safe.js";
 
 const EFFECT_PRIORITY: Record<PolicyRule["effect"], number> = {
   deny: 4,
@@ -22,6 +23,16 @@ function normalizeTarget(target: string): string {
   // a policy written in NFC (the human default) must still cover the NFD form
   // of the same file. Normalizing both sides keeps matching glyph-based.
   return target.replaceAll("\\", "/").replace(/^\.\//, "").normalize("NFC");
+}
+
+function normalizePathTarget(target: string): string {
+  const normalized = normalizeTarget(target).replace(/^(?:\.\/)+/, "");
+  // Drive-relative names such as C:file are not absolute according to
+  // win32.isAbsolute, but still depend on state outside the repository.
+  if (/^[a-z]:/i.test(normalized) || normalized.includes("\0")) {
+    throw new Error("Drive-qualified and NUL-containing paths are invalid.");
+  }
+  return normalizeRepositoryPath(normalized);
 }
 
 function specificity(scope: string): number {
@@ -57,6 +68,23 @@ export function evaluate(
   action: RuleKind,
   target: string,
 ): Decision {
+  let evaluatedTarget = target;
+  if (action === "path" || action === "approval") {
+    try {
+      evaluatedTarget = normalizePathTarget(target);
+    } catch (error) {
+      return {
+        allowed: false,
+        status: "denied",
+        action,
+        target,
+        matchedRules: [],
+        reason: `Invalid repository-relative path: ${error instanceof Error ? error.message : "unsafe path"}`,
+        requiredChecks: [],
+        approvalRequired: false,
+      };
+    }
+  }
   const requiredChecks = [
     ...new Set(
       policy.rules
@@ -64,7 +92,7 @@ export function evaluate(
           (rule) =>
             rule.kind === "check" &&
             rule.effect === "require" &&
-            matches(rule, target),
+            matches(rule, evaluatedTarget),
         )
         .flatMap((rule) =>
           typeof rule.value === "string" ? [rule.value] : [],
@@ -75,12 +103,13 @@ export function evaluate(
     (rule) =>
       rule.kind === "approval" &&
       rule.effect === "require" &&
-      matches(rule, target),
+      matches(rule, evaluatedTarget),
   );
   const candidates = policy.rules
     .filter(
       (rule) =>
-        ruleKindForAction(action).includes(rule.kind) && matches(rule, target),
+        ruleKindForAction(action).includes(rule.kind) &&
+        matches(rule, evaluatedTarget),
     )
     .sort(
       (left, right) =>

@@ -42389,12 +42389,8 @@ async function fs_safe_safeRead(root, candidate) {
 async function fs_safe_walkRepository(root) {
     const output = [];
     async function walk(current) {
-        if (output.length >= MAX_FILES)
-            return;
         const entries = await readdir(current, { withFileTypes: true });
         for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-            if (output.length >= MAX_FILES)
-                return;
             const full = resolve(current, entry.name);
             const relativePath = relative(root, full).split(sep).join("/");
             if (entry.isSymbolicLink())
@@ -42406,13 +42402,21 @@ async function fs_safe_walkRepository(root) {
             }
             if (!entry.isFile())
                 continue;
+            let size;
             try {
-                if (lstatSync(full).size <= MAX_FILE_BYTES)
-                    output.push(relativePath);
+                size = lstatSync(full).size;
             }
             catch {
                 // Concurrent workspace mutations are ignored; callers retain deterministic sorted output.
+                continue;
             }
+            if (size > MAX_FILE_BYTES)
+                continue;
+            // Check at the next eligible file, so a complete tree containing exactly
+            // MAX_FILES remains valid. Never let callers treat a prefix as a full scan.
+            if (output.length >= MAX_FILES)
+                throw new Error(`Repository discovery exceeds ${MAX_FILES} files; refusing an incomplete scan.`);
+            output.push(relativePath);
         }
     }
     await walk(root);
@@ -50680,6 +50684,7 @@ async function scanRepository(root) {
 ;// CONCATENATED MODULE: ./src/core/evaluator.ts
 
 
+
 const EFFECT_PRIORITY = {
     deny: 4,
     require: 3,
@@ -50691,6 +50696,15 @@ function normalizeTarget(target) {
     // a policy written in NFC (the human default) must still cover the NFD form
     // of the same file. Normalizing both sides keeps matching glyph-based.
     return target.replaceAll("\\", "/").replace(/^\.\//, "").normalize("NFC");
+}
+function normalizePathTarget(target) {
+    const normalized = normalizeTarget(target).replace(/^(?:\.\/)+/, "");
+    // Drive-relative names such as C:file are not absolute according to
+    // win32.isAbsolute, but still depend on state outside the repository.
+    if (/^[a-z]:/i.test(normalized) || normalized.includes("\0")) {
+        throw new Error("Drive-qualified and NUL-containing paths are invalid.");
+    }
+    return normalizeRepositoryPath(normalized);
 }
 function specificity(scope) {
     return scope.normalize("NFC").replaceAll(/[*!?{}[\]]/g, "").length;
@@ -50720,18 +50734,37 @@ function ruleKindForAction(action) {
     return [action];
 }
 function evaluate(policy, action, target) {
+    let evaluatedTarget = target;
+    if (action === "path" || action === "approval") {
+        try {
+            evaluatedTarget = normalizePathTarget(target);
+        }
+        catch (error) {
+            return {
+                allowed: false,
+                status: "denied",
+                action,
+                target,
+                matchedRules: [],
+                reason: `Invalid repository-relative path: ${error instanceof Error ? error.message : "unsafe path"}`,
+                requiredChecks: [],
+                approvalRequired: false,
+            };
+        }
+    }
     const requiredChecks = [
         ...new Set(policy.rules
             .filter((rule) => rule.kind === "check" &&
             rule.effect === "require" &&
-            matches(rule, target))
+            matches(rule, evaluatedTarget))
             .flatMap((rule) => typeof rule.value === "string" ? [rule.value] : [])),
     ];
     const approvalRequired = policy.rules.some((rule) => rule.kind === "approval" &&
         rule.effect === "require" &&
-        matches(rule, target));
+        matches(rule, evaluatedTarget));
     const candidates = policy.rules
-        .filter((rule) => ruleKindForAction(action).includes(rule.kind) && matches(rule, target))
+        .filter((rule) => ruleKindForAction(action).includes(rule.kind) &&
+        matches(rule, evaluatedTarget))
         .sort((left, right) => specificity(right.scope) - specificity(left.scope) ||
         EFFECT_PRIORITY[right.effect] - EFFECT_PRIORITY[left.effect] ||
         left.id.localeCompare(right.id));

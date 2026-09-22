@@ -91,7 +91,13 @@ describe("complete repository discovery", () => {
       await writeFile(policyPath, original);
       const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
       vi.spyOn(process.stderr, "write").mockReturnValue(true);
-      await main([command, "--root", oversizedRoot, "--write", "--force"]);
+      await main([
+        command,
+        "--root",
+        oversizedRoot,
+        ...(command === "scan" ? ["--write"] : []),
+        "--force",
+      ]);
       expect(process.exitCode).toBe(4);
       expect(stdout).not.toHaveBeenCalled();
       expect(await readFile(policyPath, "utf8")).toBe(original);

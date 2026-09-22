@@ -81,7 +81,14 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     return;
   }
 
-  await runRuleRelayCheck(argv);
+  try {
+    await runRuleRelayCheck(argv);
+  } catch (error) {
+    process.stderr.write(
+      `guardspec: ${error instanceof Error ? error.message : "unexpected error"}\n`,
+    );
+    process.exitCode = INVALID_EXIT;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

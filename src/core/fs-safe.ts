@@ -75,10 +75,8 @@ export async function safeRead(
 export async function walkRepository(root: string): Promise<string[]> {
   const output: string[] = [];
   async function walk(current: string): Promise<void> {
-    if (output.length >= MAX_FILES) return;
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (output.length >= MAX_FILES) return;
       const full = resolve(current, entry.name);
       const relativePath = relative(root, full).split(sep).join("/");
       if (entry.isSymbolicLink()) continue;
@@ -87,11 +85,21 @@ export async function walkRepository(root: string): Promise<string[]> {
         continue;
       }
       if (!entry.isFile()) continue;
+      let size: number;
       try {
-        if (lstatSync(full).size <= MAX_FILE_BYTES) output.push(relativePath);
+        size = lstatSync(full).size;
       } catch {
         // Concurrent workspace mutations are ignored; callers retain deterministic sorted output.
+        continue;
       }
+      if (size > MAX_FILE_BYTES) continue;
+      // Check at the next eligible file, so a complete tree containing exactly
+      // MAX_FILES remains valid. Never let callers treat a prefix as a full scan.
+      if (output.length >= MAX_FILES)
+        throw new Error(
+          `Repository discovery exceeds ${MAX_FILES} files; refusing an incomplete scan.`,
+        );
+      output.push(relativePath);
     }
   }
   await walk(root);

@@ -6,6 +6,7 @@ All notable changes to GuardSpec are documented here.
 
 ### Fixed
 
+- Repository discovery now rejects scans exceeding 2,000 eligible files instead of returning partial policy, hygiene, or RuleRelay migration results. CLI errors exit with code 4 before writing a policy.
 - Path and command extraction now matches natural Chinese instruction phrasing (no forced Latin-style spaces) while still requiring explicit high-confidence patterns.
 
 ### Added

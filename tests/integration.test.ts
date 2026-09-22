@@ -65,8 +65,16 @@ describe("repository scanning", () => {
     const outside = await mkdtemp(join(tmpdir(), "guardspec-outside-"));
     temporary.push(outside);
     await writeFile(join(outside, "secret.txt"), "secret", "utf8");
-    await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
-    await expect(safeRead(root, "escaped.txt")).rejects.toThrow();
+    const escaped =
+      process.platform === "win32" ? "escaped/secret.txt" : "escaped.txt";
+    if (process.platform === "win32") {
+      // Junctions test the same repository escape without requiring the
+      // Windows privilege needed to create a file symbolic link.
+      await symlink(outside, join(root, "escaped"), "junction");
+    } else {
+      await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    }
+    await expect(safeRead(root, escaped)).rejects.toThrow();
   });
 });
 

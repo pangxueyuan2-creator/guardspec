@@ -19,6 +19,8 @@ GuardSpec does not use shell interpolation. It does not execute a test, lint, bu
 
 The local walker ignores `.git`, `node_modules`, build/cache directories and symbolic links. It enforces a maximum individual file size of 512 KB and a maximum discovery count of 2,000 files. `safeResolve` requires non-empty repository-relative paths, rejects `..`, absolute and Windows drive/UNC forms, and checks that a resolved target remains inside the canonical repository root.
 
+If discovery finds more than 2,000 eligible files, it rejects the scan instead of returning a partial file list. Scanning, policy generation, instruction hygiene, and RuleRelay migration checks all fail with CLI exit code `4`; no generated policy or successful readiness report is emitted. Exactly 2,000 eligible files are accepted. This count applies to discovered files before instruction-source filtering, and ignored directories do not consume it.
+
 The policy parser uses a strict schema with a small fixed vocabulary. Unknown top-level fields and duplicate rule identifiers are rejected. A natural-language extraction is never presented as complete enforcement; unclassified prose remains visible only as a discovered source. Equal-scope allow/deny or incompatible required-value conditions are reported as conflicts, not silently ordered away.
 
 The stdio MCP server follows MCP guidance to reserve stdout for protocol messages. It returns text-formatted JSON only from query tools and logs no task data. It has no writable resource, filesystem mutation tool, remote connection, token input, or command tool.

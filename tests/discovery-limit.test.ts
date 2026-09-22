@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,6 +71,32 @@ describe("complete repository discovery", () => {
     expect(files).toHaveLength(MAX_FILES);
     expect(files).not.toContain("node_modules/ignored.txt");
   });
+
+  it("rejects exactly one eligible file beyond the limit", async () => {
+    const extra = join(exactRoot, "extra.txt");
+    await writeFile(extra, "one file too many\n");
+    try {
+      await expect(walkRepository(exactRoot)).rejects.toThrow(limitError);
+    } finally {
+      await rm(extra);
+    }
+  });
+
+  it.each(["scan", "init"])(
+    "preserves a reviewed policy when %s --force cannot finish discovery",
+    async (command) => {
+      const policyPath = join(oversizedRoot, ".agent-policy.yml");
+      const original =
+        "# human-reviewed\nversion: 1\nname: retained\nrules: []\n";
+      await writeFile(policyPath, original);
+      const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+      vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      await main([command, "--root", oversizedRoot, "--write", "--force"]);
+      expect(process.exitCode).toBe(4);
+      expect(stdout).not.toHaveBeenCalled();
+      expect(await readFile(policyPath, "utf8")).toBe(original);
+    },
+  );
 
   it.each([
     ["walk", walkRepository],

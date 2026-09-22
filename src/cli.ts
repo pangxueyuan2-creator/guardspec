@@ -42,7 +42,9 @@ function parseArgs(argv: string[]): Args {
       continue;
     }
     if (token.startsWith("--")) {
-      const [name, inline] = token.slice(2).split("=", 2);
+      const separator = token.indexOf("=");
+      const name = token.slice(2, separator === -1 ? undefined : separator);
+      const inline = separator === -1 ? undefined : token.slice(separator + 1);
       if (!name) throw new Error("Malformed flag.");
       const next =
         inline ??

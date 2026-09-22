@@ -65,8 +65,16 @@ describe("repository scanning", () => {
     const outside = await mkdtemp(join(tmpdir(), "guardspec-outside-"));
     temporary.push(outside);
     await writeFile(join(outside, "secret.txt"), "secret", "utf8");
-    await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
-    await expect(safeRead(root, "escaped.txt")).rejects.toThrow();
+    const escaped =
+      process.platform === "win32" ? "escaped/secret.txt" : "escaped.txt";
+    if (process.platform === "win32") {
+      // Junctions test the same repository escape without requiring the
+      // Windows privilege needed to create a file symbolic link.
+      await symlink(outside, join(root, "escaped"), "junction");
+    } else {
+      await symlink(join(outside, "secret.txt"), join(root, "escaped.txt"));
+    }
+    await expect(safeRead(root, escaped)).rejects.toThrow();
   });
 });
 
@@ -79,7 +87,7 @@ describe("CLI behavior", () => {
         "-p",
         "tsconfig.json",
       ],
-      { cwd: ROOT, stdio: "pipe" },
+      { cwd: ROOT, stdio: "pipe", timeout: 20_000 },
     );
     const result = spawnSync(
       process.execPath,
@@ -87,11 +95,12 @@ describe("CLI behavior", () => {
       {
         cwd: ROOT,
         encoding: "utf8",
+        timeout: 5_000,
       },
     );
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Usage:");
-  });
+  }, 30_000);
   it("initializes, checks, emits JSON, and generates an adapter", async () => {
     const root = await copyFixture("python-repo");
     const output: string[] = [];

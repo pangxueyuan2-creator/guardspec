@@ -6,6 +6,11 @@ All notable changes to GuardSpec are documented here.
 
 ### Fixed
 
+- Action SARIF output rejects an existing symlink or non-regular file before writing, while preserving ordinary report replacement and reports larger than the policy-file size limit.
+- Policy and adapter I/O now enforces the selected repository's filesystem boundary and a 512,000-byte file limit. Writes reject symbolic links and directory junctions before creating directories or changing files.
+- Path preflight rejects unsafe repository-relative inputs before applying wildcard allows, including traversal and drive-qualified paths; common leading `./` and backslash separators retain their intended rule matching.
+- CLI inline flag values retain every character after the first `=`, so paths and commands containing `=` are evaluated in full.
+- Repository discovery now rejects scans exceeding 2,000 eligible files instead of returning partial policy, hygiene, or RuleRelay migration results. CLI errors exit with code 4 before writing a policy.
 - Path and command extraction now matches natural Chinese instruction phrasing (no forced Latin-style spaces) while still requiring explicit high-confidence patterns.
 
 ### Added

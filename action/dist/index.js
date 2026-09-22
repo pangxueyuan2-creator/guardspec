@@ -40826,7 +40826,7 @@ var io_util_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _
 };
 
 
-const { chmod, copyFile, lstat, mkdir, open: io_util_open, readdir: io_util_readdir, rename, rm, rmdir, stat: io_util_stat, symlink, unlink } = external_fs_namespaceObject.promises;
+const { chmod, copyFile, lstat: io_util_lstat, mkdir: io_util_mkdir, open: io_util_open, readdir: io_util_readdir, rename, rm, rmdir, stat, symlink, unlink } = external_fs_namespaceObject.promises;
 // export const {open} = 'fs'
 const IS_WINDOWS = process.platform === 'win32';
 /**
@@ -40857,7 +40857,7 @@ const READONLY = external_fs_namespaceObject.constants.O_RDONLY;
 function exists(fsPath) {
     return io_util_awaiter(this, void 0, void 0, function* () {
         try {
-            yield io_util_stat(fsPath);
+            yield stat(fsPath);
         }
         catch (err) {
             if (err.code === 'ENOENT') {
@@ -40870,7 +40870,7 @@ function exists(fsPath) {
 }
 function isDirectory(fsPath_1) {
     return io_util_awaiter(this, arguments, void 0, function* (fsPath, useStat = false) {
-        const stats = useStat ? yield io_util_stat(fsPath) : yield lstat(fsPath);
+        const stats = useStat ? yield stat(fsPath) : yield io_util_lstat(fsPath);
         return stats.isDirectory();
     });
 }
@@ -40900,7 +40900,7 @@ function tryGetExecutablePath(filePath, extensions) {
         let stats = undefined;
         try {
             // test file exists
-            stats = yield io_util_stat(filePath);
+            stats = yield stat(filePath);
         }
         catch (err) {
             if (err.code !== 'ENOENT') {
@@ -40928,7 +40928,7 @@ function tryGetExecutablePath(filePath, extensions) {
             filePath = originalFilePath + extension;
             stats = undefined;
             try {
-                stats = yield io_util_stat(filePath);
+                stats = yield stat(filePath);
             }
             catch (err) {
                 if (err.code !== 'ENOENT') {
@@ -42359,9 +42359,9 @@ function normalizeRepositoryPath(input) {
     return parts.join("/");
 }
 function repositoryRoot(start) {
-    return realpathSync(start);
+    return (0,external_node_fs_namespaceObject.realpathSync)(start);
 }
-function fs_safe_safeResolve(root, candidate) {
+function safeResolve(root, candidate) {
     const normalized = normalizeRepositoryPath(candidate);
     const target = (0,external_node_path_namespaceObject.resolve)(root, ...normalized.split("/"));
     const rel = (0,external_node_path_namespaceObject.relative)(root, target);
@@ -42374,27 +42374,63 @@ function fs_safe_safeResolve(root, candidate) {
     return target;
 }
 async function fs_safe_safeRead(root, candidate) {
-    const target = fs_safe_safeResolve(root, candidate);
-    const metadata = await stat(target);
+    const target = safeResolve(root, candidate);
+    const metadata = await (0,promises_.stat)(target);
     if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
         throw new Error(`Refusing to read unsupported or oversized file: ${candidate}`);
     }
-    const resolvedTarget = realpathSync(target);
-    const rel = relative(root, resolvedTarget);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+    const resolvedTarget = (0,external_node_fs_namespaceObject.realpathSync)(target);
+    const rel = (0,external_node_path_namespaceObject.relative)(root, resolvedTarget);
+    if (rel.startsWith(`..${external_node_path_namespaceObject.sep}`) || rel === ".." || (0,external_node_path_namespaceObject.isAbsolute)(rel)) {
         throw new Error(`Symlink escapes repository root: ${candidate}`);
     }
-    return readFile(resolvedTarget, "utf8");
+    return (0,promises_.readFile)(resolvedTarget, "utf8");
+}
+/**
+ * Validate existing path components before creating directories or writing.
+ * The selected root may be an alias, but writes below it never follow links.
+ * This guards a static workspace, not concurrent filesystem replacement.
+ */
+async function fs_safe_safeWrite(root, candidate, contents, { createParents = false } = {}) {
+    if (Buffer.byteLength(contents, "utf8") > MAX_FILE_BYTES) {
+        throw new Error(`Refusing to write oversized file: ${candidate}`);
+    }
+    const canonicalRoot = repositoryRoot(root);
+    const target = safeResolve(canonicalRoot, candidate);
+    const parts = relative(canonicalRoot, target).split(sep);
+    let current = canonicalRoot;
+    for (const [index, part] of parts.entries()) {
+        current = resolve(current, part);
+        let metadata;
+        try {
+            metadata = await lstat(current);
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                break;
+            throw error;
+        }
+        // lstat also identifies Windows directory junctions and dangling links.
+        if (metadata.isSymbolicLink()) {
+            throw new Error(`Refusing to write through symbolic link: ${candidate}`);
+        }
+        const rel = relative(canonicalRoot, realpathSync(current));
+        if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+            throw new Error(`Path escapes repository root: ${candidate}`);
+        }
+        if (index === parts.length - 1 ? !metadata.isFile() : !metadata.isDirectory()) {
+            throw new Error(`Refusing to write unsupported file path: ${candidate}`);
+        }
+    }
+    if (createParents)
+        await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, contents, "utf8");
 }
 async function fs_safe_walkRepository(root) {
     const output = [];
     async function walk(current) {
-        if (output.length >= MAX_FILES)
-            return;
         const entries = await readdir(current, { withFileTypes: true });
         for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-            if (output.length >= MAX_FILES)
-                return;
             const full = resolve(current, entry.name);
             const relativePath = relative(root, full).split(sep).join("/");
             if (entry.isSymbolicLink())
@@ -42406,13 +42442,21 @@ async function fs_safe_walkRepository(root) {
             }
             if (!entry.isFile())
                 continue;
+            let size;
             try {
-                if (lstatSync(full).size <= MAX_FILE_BYTES)
-                    output.push(relativePath);
+                size = lstatSync(full).size;
             }
             catch {
                 // Concurrent workspace mutations are ignored; callers retain deterministic sorted output.
+                continue;
             }
+            if (size > MAX_FILE_BYTES)
+                continue;
+            // Check at the next eligible file, so a complete tree containing exactly
+            // MAX_FILES remains valid. Never let callers treat a prefix as a full scan.
+            if (output.length >= MAX_FILES)
+                throw new Error(`Repository discovery exceeds ${MAX_FILES} files; refusing an incomplete scan.`);
+            output.push(relativePath);
         }
     }
     await walk(root);
@@ -50374,7 +50418,6 @@ function preprocess(fn, schema) {
 
 
 
-
 const provenanceSchema = object({
     source: schemas_string().min(1),
     line: schemas_number().int().positive(),
@@ -50448,7 +50491,7 @@ function parsePolicy(input) {
     return parsed.data;
 }
 async function loadPolicy(root, policyPath = ".agent-policy.yml") {
-    const contents = await (0,promises_.readFile)(fs_safe_safeResolve(root, policyPath), "utf8");
+    const contents = await fs_safe_safeRead(repositoryRoot(root), policyPath);
     return parsePolicy(contents);
 }
 function policy_policyTemplate(name, rules) {
@@ -50464,7 +50507,7 @@ function stringifyPolicy(policy) {
     return `# GuardSpec policy. Review every generated rule before relying on it.\n# Sources are preserved as provenance; GuardSpec never claims unparsed prose is enforced.\n${stringify(policy, { lineWidth: 0 })}`;
 }
 async function writePolicy(root, policy, policyPath = ".agent-policy.yml") {
-    await writeFile(safeResolve(root, policyPath), stringifyPolicy(policy), "utf8");
+    await safeWrite(root, policyPath, stringifyPolicy(policy));
 }
 function manualProvenance() {
     return {
@@ -50680,6 +50723,7 @@ async function scanRepository(root) {
 ;// CONCATENATED MODULE: ./src/core/evaluator.ts
 
 
+
 const EFFECT_PRIORITY = {
     deny: 4,
     require: 3,
@@ -50691,6 +50735,15 @@ function normalizeTarget(target) {
     // a policy written in NFC (the human default) must still cover the NFD form
     // of the same file. Normalizing both sides keeps matching glyph-based.
     return target.replaceAll("\\", "/").replace(/^\.\//, "").normalize("NFC");
+}
+function normalizePathTarget(target) {
+    const normalized = normalizeTarget(target).replace(/^(?:\.\/)+/, "");
+    // Drive-relative names such as C:file are not absolute according to
+    // win32.isAbsolute, but still depend on state outside the repository.
+    if (/^[a-z]:/i.test(normalized) || normalized.includes("\0")) {
+        throw new Error("Drive-qualified and NUL-containing paths are invalid.");
+    }
+    return normalizeRepositoryPath(normalized);
 }
 function specificity(scope) {
     return scope.normalize("NFC").replaceAll(/[*!?{}[\]]/g, "").length;
@@ -50720,18 +50773,37 @@ function ruleKindForAction(action) {
     return [action];
 }
 function evaluate(policy, action, target) {
+    let evaluatedTarget = target;
+    if (action === "path" || action === "approval") {
+        try {
+            evaluatedTarget = normalizePathTarget(target);
+        }
+        catch (error) {
+            return {
+                allowed: false,
+                status: "denied",
+                action,
+                target,
+                matchedRules: [],
+                reason: `Invalid repository-relative path: ${error instanceof Error ? error.message : "unsafe path"}`,
+                requiredChecks: [],
+                approvalRequired: false,
+            };
+        }
+    }
     const requiredChecks = [
         ...new Set(policy.rules
             .filter((rule) => rule.kind === "check" &&
             rule.effect === "require" &&
-            matches(rule, target))
+            matches(rule, evaluatedTarget))
             .flatMap((rule) => typeof rule.value === "string" ? [rule.value] : [])),
     ];
     const approvalRequired = policy.rules.some((rule) => rule.kind === "approval" &&
         rule.effect === "require" &&
-        matches(rule, target));
+        matches(rule, evaluatedTarget));
     const candidates = policy.rules
-        .filter((rule) => ruleKindForAction(action).includes(rule.kind) && matches(rule, target))
+        .filter((rule) => ruleKindForAction(action).includes(rule.kind) &&
+        matches(rule, evaluatedTarget))
         .sort((left, right) => specificity(right.scope) - specificity(left.scope) ||
         EFFECT_PRIORITY[right.effect] - EFFECT_PRIORITY[left.effect] ||
         left.id.localeCompare(right.id));
@@ -50911,7 +50983,18 @@ async function run() {
     const output = JSON.stringify(report);
     setOutput("result", output);
     const sarifPath = ".guardspec.sarif";
-    await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 1455, 23)).then(({ writeFile }) => writeFile(sarifPath, JSON.stringify(sarif(report), null, 2)));
+    const { lstat, writeFile } = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 1455, 23));
+    try {
+        const metadata = await lstat(sarifPath);
+        if (metadata.isSymbolicLink() || !metadata.isFile())
+            throw new Error(`Refusing to write SARIF report to a symbolic link or non-regular file: ${sarifPath}`);
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+    }
+    // SARIF can contain many findings; the policy-file size limit does not apply.
+    await writeFile(sarifPath, JSON.stringify(sarif(report), null, 2), "utf8");
     setOutput("sarif", sarifPath);
     if (!report.valid ||
         (getBooleanInput("fail-on-warn") &&

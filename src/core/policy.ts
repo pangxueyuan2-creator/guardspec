@@ -1,7 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
-import { safeResolve } from "./fs-safe.js";
+import { repositoryRoot, safeRead, safeWrite } from "./fs-safe.js";
 import type { Policy, PolicyRule, Provenance } from "./types.js";
 
 const provenanceSchema = z.object({
@@ -93,7 +92,7 @@ export async function loadPolicy(
   root: string,
   policyPath = ".agent-policy.yml",
 ): Promise<Policy> {
-  const contents = await readFile(safeResolve(root, policyPath), "utf8");
+  const contents = await safeRead(repositoryRoot(root), policyPath);
   return parsePolicy(contents);
 }
 
@@ -118,11 +117,7 @@ export async function writePolicy(
   policy: Policy,
   policyPath = ".agent-policy.yml",
 ): Promise<void> {
-  await writeFile(
-    safeResolve(root, policyPath),
-    stringifyPolicy(policy),
-    "utf8",
-  );
+  await safeWrite(root, policyPath, stringifyPolicy(policy));
 }
 
 export function manualProvenance(): Provenance {

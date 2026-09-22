@@ -17,7 +17,13 @@ GuardSpec is a local preflight compiler. Its principal security property is **bo
 
 GuardSpec does not use shell interpolation. It does not execute a test, lint, build, git, package-manager or model command discovered from a policy or instruction source. Its CLI only writes when an operator calls `init`, `scan --write` or `adapters generate`. All other normal commands are read-only.
 
-The local walker ignores `.git`, `node_modules`, build/cache directories and symbolic links. It enforces a maximum individual file size of 512 KB and a maximum discovery count of 2,000 files. `safeResolve` requires non-empty repository-relative paths, rejects `..`, absolute and Windows drive/UNC forms, and checks that a resolved target remains inside the canonical repository root.
+The local walker ignores `.git`, `node_modules`, build/cache directories and symbolic links. It enforces a maximum individual file size of 512,000 bytes and a maximum discovery count of 2,000 files. `safeResolve` requires non-empty repository-relative paths, rejects `..`, absolute and Windows drive/UNC forms, and checks the lexical path boundary. Policy and existing-adapter reads additionally check the file's real path against the canonical selected root and apply the same file size limit before reading.
+
+Policy and adapter writes reject symbolic links and Windows directory junctions in existing path components below the selected root, including dangling links. These checks run before creating parent directories or writing files. Generated output exceeding 512,000 bytes is rejected before replacing an existing file, so it cannot create a file that exceeds the read limit. Selecting a repository root through an alias remains supported; its canonical directory establishes the boundary.
+
+The Action writes its fixed `.guardspec.sarif` report only when that entry is absent or an ordinary file. Existing symlinks, junctions and other file types are rejected before writing, and the SARIF output path is published only after the write succeeds. Reports retain support for more than 512,000 bytes; the policy-file limit does not apply to generated SARIF.
+
+If discovery finds more than 2,000 eligible files, it rejects the scan instead of returning a partial file list. Scanning, policy generation, instruction hygiene, and RuleRelay migration checks all fail with CLI exit code `4`; no generated policy or successful readiness report is emitted. Exactly 2,000 eligible files are accepted. This count applies to discovered files before instruction-source filtering, and ignored directories do not consume it.
 
 The policy parser uses a strict schema with a small fixed vocabulary. Unknown top-level fields and duplicate rule identifiers are rejected. A natural-language extraction is never presented as complete enforcement; unclassified prose remains visible only as a discovered source. Equal-scope allow/deny or incompatible required-value conditions are reported as conflicts, not silently ordered away.
 
@@ -26,6 +32,10 @@ The stdio MCP server follows MCP guidance to reserve stdout for protocol message
 ## Explicit non-guarantees
 
 GuardSpec cannot make another agent obey a policy. It cannot enforce runtime sandboxing, GitHub branch protection, OS permissions, secret access, review approval, vendor-specific hosted Agent behavior, or a remote MCP server’s behavior. It does not claim that a markdown instruction file is sufficient security control. Use it alongside code review, CI, least-privilege tokens, protected branches, and runtime isolation.
+
+Filesystem checks protect against links already present in a static workspace. They are not a race-free sandbox: concurrent path replacement and hard-linked files require operating-system isolation or a trusted workspace. Do not run write commands while an untrusted process can replace repository directories.
+
+Path preflight operates on logical repository-relative names. It accepts backslash separators and leading `./`, but denies traversal, absolute/UNC/drive-qualified names, empty or internal `.` segments, and NUL characters before matching any allow rule. Matching remains case-sensitive on every host. Callers must supply the repository's canonical spelling; preflight does not resolve filesystem aliases such as symlinks, Windows case variants, short names, or trailing-dot aliases. It cannot prove that a later filesystem operation reaches the same file.
 
 ## Disclosure process
 

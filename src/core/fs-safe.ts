@@ -1,6 +1,13 @@
 import { realpathSync, lstatSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { relative, resolve, sep, isAbsolute, win32 } from "node:path";
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, relative, resolve, sep, isAbsolute, win32 } from "node:path";
 
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -70,6 +77,51 @@ export async function safeRead(
     throw new Error(`Symlink escapes repository root: ${candidate}`);
   }
   return readFile(resolvedTarget, "utf8");
+}
+
+/**
+ * Validate existing path components before creating directories or writing.
+ * The selected root may be an alias, but writes below it never follow links.
+ * This guards a static workspace, not concurrent filesystem replacement.
+ */
+export async function safeWrite(
+  root: string,
+  candidate: string,
+  contents: string,
+  { createParents = false }: { createParents?: boolean } = {},
+): Promise<void> {
+  if (Buffer.byteLength(contents, "utf8") > MAX_FILE_BYTES) {
+    throw new Error(`Refusing to write oversized file: ${candidate}`);
+  }
+  const canonicalRoot = repositoryRoot(root);
+  const target = safeResolve(canonicalRoot, candidate);
+  const parts = relative(canonicalRoot, target).split(sep);
+  let current = canonicalRoot;
+  for (const [index, part] of parts.entries()) {
+    current = resolve(current, part);
+    let metadata;
+    try {
+      metadata = await lstat(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      throw error;
+    }
+    // lstat also identifies Windows directory junctions and dangling links.
+    if (metadata.isSymbolicLink()) {
+      throw new Error(`Refusing to write through symbolic link: ${candidate}`);
+    }
+    const rel = relative(canonicalRoot, realpathSync(current));
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new Error(`Path escapes repository root: ${candidate}`);
+    }
+    if (
+      index === parts.length - 1 ? !metadata.isFile() : !metadata.isDirectory()
+    ) {
+      throw new Error(`Refusing to write unsupported file path: ${candidate}`);
+    }
+  }
+  if (createParents) await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, contents, "utf8");
 }
 
 export async function walkRepository(root: string): Promise<string[]> {

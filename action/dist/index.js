@@ -40826,7 +40826,7 @@ var io_util_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _
 };
 
 
-const { chmod, copyFile, lstat, mkdir, open: io_util_open, readdir: io_util_readdir, rename, rm, rmdir, stat: io_util_stat, symlink, unlink } = external_fs_namespaceObject.promises;
+const { chmod, copyFile, lstat: io_util_lstat, mkdir: io_util_mkdir, open: io_util_open, readdir: io_util_readdir, rename, rm, rmdir, stat, symlink, unlink } = external_fs_namespaceObject.promises;
 // export const {open} = 'fs'
 const IS_WINDOWS = process.platform === 'win32';
 /**
@@ -40857,7 +40857,7 @@ const READONLY = external_fs_namespaceObject.constants.O_RDONLY;
 function exists(fsPath) {
     return io_util_awaiter(this, void 0, void 0, function* () {
         try {
-            yield io_util_stat(fsPath);
+            yield stat(fsPath);
         }
         catch (err) {
             if (err.code === 'ENOENT') {
@@ -40870,7 +40870,7 @@ function exists(fsPath) {
 }
 function isDirectory(fsPath_1) {
     return io_util_awaiter(this, arguments, void 0, function* (fsPath, useStat = false) {
-        const stats = useStat ? yield io_util_stat(fsPath) : yield lstat(fsPath);
+        const stats = useStat ? yield stat(fsPath) : yield io_util_lstat(fsPath);
         return stats.isDirectory();
     });
 }
@@ -40900,7 +40900,7 @@ function tryGetExecutablePath(filePath, extensions) {
         let stats = undefined;
         try {
             // test file exists
-            stats = yield io_util_stat(filePath);
+            stats = yield stat(filePath);
         }
         catch (err) {
             if (err.code !== 'ENOENT') {
@@ -40928,7 +40928,7 @@ function tryGetExecutablePath(filePath, extensions) {
             filePath = originalFilePath + extension;
             stats = undefined;
             try {
-                stats = yield io_util_stat(filePath);
+                stats = yield stat(filePath);
             }
             catch (err) {
                 if (err.code !== 'ENOENT') {
@@ -42359,9 +42359,9 @@ function normalizeRepositoryPath(input) {
     return parts.join("/");
 }
 function repositoryRoot(start) {
-    return realpathSync(start);
+    return (0,external_node_fs_namespaceObject.realpathSync)(start);
 }
-function fs_safe_safeResolve(root, candidate) {
+function safeResolve(root, candidate) {
     const normalized = normalizeRepositoryPath(candidate);
     const target = (0,external_node_path_namespaceObject.resolve)(root, ...normalized.split("/"));
     const rel = (0,external_node_path_namespaceObject.relative)(root, target);
@@ -42374,17 +42374,57 @@ function fs_safe_safeResolve(root, candidate) {
     return target;
 }
 async function fs_safe_safeRead(root, candidate) {
-    const target = fs_safe_safeResolve(root, candidate);
-    const metadata = await stat(target);
+    const target = safeResolve(root, candidate);
+    const metadata = await (0,promises_.stat)(target);
     if (!metadata.isFile() || metadata.size > MAX_FILE_BYTES) {
         throw new Error(`Refusing to read unsupported or oversized file: ${candidate}`);
     }
-    const resolvedTarget = realpathSync(target);
-    const rel = relative(root, resolvedTarget);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+    const resolvedTarget = (0,external_node_fs_namespaceObject.realpathSync)(target);
+    const rel = (0,external_node_path_namespaceObject.relative)(root, resolvedTarget);
+    if (rel.startsWith(`..${external_node_path_namespaceObject.sep}`) || rel === ".." || (0,external_node_path_namespaceObject.isAbsolute)(rel)) {
         throw new Error(`Symlink escapes repository root: ${candidate}`);
     }
-    return readFile(resolvedTarget, "utf8");
+    return (0,promises_.readFile)(resolvedTarget, "utf8");
+}
+/**
+ * Validate existing path components before creating directories or writing.
+ * The selected root may be an alias, but writes below it never follow links.
+ * This guards a static workspace, not concurrent filesystem replacement.
+ */
+async function fs_safe_safeWrite(root, candidate, contents, { createParents = false } = {}) {
+    if (Buffer.byteLength(contents, "utf8") > MAX_FILE_BYTES) {
+        throw new Error(`Refusing to write oversized file: ${candidate}`);
+    }
+    const canonicalRoot = repositoryRoot(root);
+    const target = safeResolve(canonicalRoot, candidate);
+    const parts = relative(canonicalRoot, target).split(sep);
+    let current = canonicalRoot;
+    for (const [index, part] of parts.entries()) {
+        current = resolve(current, part);
+        let metadata;
+        try {
+            metadata = await lstat(current);
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                break;
+            throw error;
+        }
+        // lstat also identifies Windows directory junctions and dangling links.
+        if (metadata.isSymbolicLink()) {
+            throw new Error(`Refusing to write through symbolic link: ${candidate}`);
+        }
+        const rel = relative(canonicalRoot, realpathSync(current));
+        if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+            throw new Error(`Path escapes repository root: ${candidate}`);
+        }
+        if (index === parts.length - 1 ? !metadata.isFile() : !metadata.isDirectory()) {
+            throw new Error(`Refusing to write unsupported file path: ${candidate}`);
+        }
+    }
+    if (createParents)
+        await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, contents, "utf8");
 }
 async function fs_safe_walkRepository(root) {
     const output = [];
@@ -50378,7 +50418,6 @@ function preprocess(fn, schema) {
 
 
 
-
 const provenanceSchema = object({
     source: schemas_string().min(1),
     line: schemas_number().int().positive(),
@@ -50452,7 +50491,7 @@ function parsePolicy(input) {
     return parsed.data;
 }
 async function loadPolicy(root, policyPath = ".agent-policy.yml") {
-    const contents = await (0,promises_.readFile)(fs_safe_safeResolve(root, policyPath), "utf8");
+    const contents = await fs_safe_safeRead(repositoryRoot(root), policyPath);
     return parsePolicy(contents);
 }
 function policy_policyTemplate(name, rules) {
@@ -50468,7 +50507,7 @@ function stringifyPolicy(policy) {
     return `# GuardSpec policy. Review every generated rule before relying on it.\n# Sources are preserved as provenance; GuardSpec never claims unparsed prose is enforced.\n${stringify(policy, { lineWidth: 0 })}`;
 }
 async function writePolicy(root, policy, policyPath = ".agent-policy.yml") {
-    await writeFile(safeResolve(root, policyPath), stringifyPolicy(policy), "utf8");
+    await safeWrite(root, policyPath, stringifyPolicy(policy));
 }
 function manualProvenance() {
     return {
